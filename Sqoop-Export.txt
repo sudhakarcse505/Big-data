@@ -1,0 +1,79 @@
+sqoop export different delimiters
+=================================
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_coma" \
+--input-fields-terminated-by ',' \
+--outdir java_files
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_star" \
+--input-fields-terminated-by '*' \
+--outdir java_files
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_pipe" \
+--input-fields-terminated-by '|' \
+--outdir java_files
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_slash" \
+--input-input-fields-terminated-by '/' \
+--outdir java_files
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_tab" \
+--input-fields-terminated-by '\t' \
+--outdir java_files
+
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_null" \
+--input-fields-terminated-by '\0' \
+--outdir java_files  
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_bslash" \
+--input-fields-terminated-by '\\' \
+--outdir java_files
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_dquotes" \
+--input-fields-terminated-by '"' \
+--outdir java_files
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/test" \
+--username root --password cloudera \
+--table orders \
+--export-dir "File_delimiters/text_squotes" \
+--input-fields-terminated-by "'" \
+--outdir java_files
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/sudha_dev" \
+--username root --password cloudera \
+--table orders_1 \
+--export-dir "/user/hive/warehouse/retail_db.db/orders" \
+--input-fields-terminated-by '\001'
+
+
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/sudha_dev" \
+--username root --password cloudera \
+--table orders_1 \
+--export-dir "/user/hive/warehouse/retail_db1.db/orders" \
+--input-fields-terminated-by 'M'
+

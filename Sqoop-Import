@@ -1,0 +1,157 @@
+Sqoop Import as different Files:
+---------------------------------
+1.Text-File:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table orders \
+--target-dir "/user/cloudera/File_Formats/sqoop-orders-text-file" \
+--as-textfile \
+--outdir "java_files"
+
+2.Sequence-File:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table orders \
+--target-dir "/user/cloudera/File_Formats/sqoop-orders-sequence-file" \
+--as-sequencefile \
+--outdir "java_files"
+
+3.avro-File:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table orders \
+--target-dir "/user/cloudera/File_Formats/sqoop-orders-avro-file" \
+--as-avrodatafile \
+--outdir "java_files"
+
+4.parquet-File:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table orders \
+--target-dir "/user/cloudera/File_Formats/sqoop-orders-parquet-file" \
+--as-parquetfile \
+--outdir "java_files"
+
+5.Text-File with Compression
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table orders \
+--target-dir "/user/cloudera/File_Formats/sqoop-orders-text-Snappy-file" \
+--as-textfile \
+-z --compression-codec "org.apache.hadoop.io.compress.SnappyCodec" \
+--outdir "java_files"
+
+sqoop-Import-different delimiters in TextFile:
+-----------------------------------------------
+1.Double Quotes:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/dquotes" \
+--fields-terminated-by '"' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+2.Single Quotes:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/squotes" \
+--fields-terminated-by "'" \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+3.tab delimiter:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/tab" \
+--fields-terminated-by '\t' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+4.pipe delimiter:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/pipe" \
+--fields-terminated-by '|' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+
+5.back-slash delimiter:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/backslash" \
+--fields-terminated-by '\\' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+6.forward-slash delimiter:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/slash" \
+--fields-terminated-by '/' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+7.Null/Fixed width:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/null_deli" \
+--fields-terminated-by '\0' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+8.Space delimiter:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/space" \
+--fields-terminated-by ' ' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+9.Star delimiter:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/star" \
+--fields-terminated-by '*' \
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+10.Single-Character delimiter:(can Use Any Alphabet)
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/single-character" \
+--fields-terminated-by 'Z' \ 
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+11.Hive-default delimiter:
+sqoop import --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table departments \
+--target-dir "/user/cloudera/File_delimiters/sqoop_delimiters/hive-default" \
+--fields-terminated-by '\001' \ 
+--lines-terminated-by '\n' \
+--as-textfile \
+--outdir "java_files"
+
+
