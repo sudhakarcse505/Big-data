@@ -1,0 +1,78 @@
+Sqoop-Incremental-Load to HDFS:
+----------------------------------
+sqoop job --create "products_incremental" \
+-- import \
+--connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table products_replica  \
+--incremental "append" \
+--check-column "product_id" \
+--last-value "0" \
+--target-dir "/user/cloudera/problem5/products-incremental"
+
+sqoop job --exec "products_incremental"
+
+
+Sqoop-Incremental-Load to Hive:
+-------------------------------
+sqoop job --create "hive_incremental" \
+-- import \
+--username root --password cloudera \
+--table products_replica \
+--hive-import \
+--hive-database "problem6" \
+--hive-table "products_hive" \
+--incremental "append" \
+--check-column "product_id" \
+--last-value 0
+
+sqoop job --exec "hive_incremental"
+
+Sqoop-Incremental-Load hdfs-to-Mysql:
+-------------------------------------
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table products_123 \
+--export-dir "/user/cloudera/hdpcp/products"
+--update-mode "allowinsert" \
+--update-key "product_id" \
+--input-fields-terminated-by '|'  \
+--outdir "java_files"
+
+
+
+Sqoop-Incremental-Load hive-to-Mysql:
+-------------------------------------
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" \
+--username root --password cloudera \
+--table products_external \
+--export-dir "/user/hive/warehouse/problem5.db/products_hive"
+--update-mode "allowinsert" \
+--update-key "product_id" \
+--input-fields-terminated-by '\001' 
+
+sqoop Merge:
+------------
+sqoop merge --new-data "/user/cloudera/problem5/products-text-part2" \
+--onto "/user/cloudera/problem5/products-text-part1" \
+--merge-key "product_id" \
+--target-dir "/user/cloudera/problem5/products-text-both-parts" \
+--class-name "<last-executed sqoop job name/tableName>" \
+--jar-file "<take from last sqoop run>" 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
