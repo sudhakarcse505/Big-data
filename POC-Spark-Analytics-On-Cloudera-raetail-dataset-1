@@ -1,0 +1,88 @@
+Problem Statement:
+------------------
+Find out the maximum product price, total products, average product price, Minimum  product price under each category
+of products whose product price should be greater than 10 USD and Sort the result by category ascending order 
+using RDD in Apache Spark and store the result in the Hive meta store External table in parquet file format
+
+Solution:
+//********
+hadoop fs -mkdir spark_poc
+
+//*****sqoop import the products tables from mysql database to hdfs as text file*****/
+Step1:
+------
+
+sqoop import --connect jdbc:mysql://localhost:3306/retail_db \
+--username root --password cloudera \
+--target-dir "/user/cloudera/spark_poc/products" \
+--as-textfile \
+--fields-terminated-by '\t' \
+--lines-terminated-by '\n' \
+--table "products" \
+--where "product_price > 0" \
+--null-string "ABC" \
+--null-non-string -1
+
+
+Step2 :
+------
+val products=sc.textFile("/user/cloudera/spark_poc/products/*").map(r=>(r.split("\t")(0).toInt,r.split("\t")(1).toInt,
+r.split("\t")(2),r.split("\t")(3),r.split("\t")(4).toFloat,r.split("\t")(5))
+
+products.take(10).foreach(println) /**this statment is to print the sample 10 records ***/
+
+Step3:
+------
+val prodreq=products.filter(r=>(r._5 > 10)).map(r=>(r._2,r._5))
+prodreq.take(10).foreach(println)
+
+Step4:
+------
+val result_rdd=prodreq.aggregateByKey(0.0,0,0.0,9999999.0)(
+(x, y) => (math.max(x._1, y), x._2 +1, x._3+y, math.min(x._4, y)),
+(x, y) => (math.max(x._1, y._1), x._2+y._2, x._3+y._3, math.min(x._4, y._4))
+).map(r=>(r._1,r._2._2,r._2._1,r._2._3/r._2._2,r._2._4)).sortBy(_._1,true)
+
+result_rdd.take(10).foreach(println)
+
+Step5 :
+-------
+val result_df=result_rdd.toDF.select(col("_1").as("category_id"),col("_2").as("Total_products"),col("_3").as("Max_prod_price"),col("_4").as("Avg_prod_price"),col("_5").as("Min_prod_price"))
+
+result_df.registerTempTable("Products")
+
+val data_format=sqlContext.sql("select category_id,Total_products,round(Max_prod_price,2) as Max_Price,round(Avg_prod_price,2) as Avg_Price,round(Min_prod_price,2) as Min_Price From products")
+
+Step6:
+------
+sqlContext.setConf("spark.sql.parquet.compresssion.codec","uncompressed")
+
+data_format.coalesce(1).write.parquet("/user/hive/warehouse/spark_poc.db/products_analytics")
+
+
+*******Lanch Hive and ran these Hql statements***********
+Step7:
+------
+create database spark_poc;
+
+Step8:
+------
+create table spark_poc.products_analytics(category_id Int,Total_products Int,Max_Price Double,Avg_Price Double,
+Min_price Double ) 
+stored as parquet
+location '/user/hive/warehouse/spark_poc.db/products_analytics' ;
+
+*****Lanch the Impala-shell to see the result in table format**********
+Step9:
+-----
+invalidate metadata; //to refresh the Metadata from hive
+use spark_poc;
+Select * from products_analytics;
+
+
+
+
+
+
+
+
