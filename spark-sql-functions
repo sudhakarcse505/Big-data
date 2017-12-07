@@ -1,0 +1,77 @@
+sqlContext.sql("select day  (current_date)")
+
+val orddf=sqlContext.read.avro
+ |-- order_id: integer (nullable = true)
+ |-- order_date: long (nullable = true)
+ |-- order_customer_id: integer (nullable = true)
+ |-- order_status: string (nullable = true)
+ |-- order_item_id: integer (nullable = true)
+ |-- order_item_order_id: integer (nullable = true)
+ |-- order_item_product_id: integer (nullable = true)
+ |-- order_item_quantity: integer (nullable = true)
+ |-- order_item_subtotal: float (nullable = true)
+ |-- order_item_product_price: float (nullable = true)
+
+
+spark-sql Important functions:
+*******************************
+import org.apache.spark.sql.functions._
+countDistinct
+
+val x=sqlContext.sql("select order_date,order_item_subtotal from test")
+sqlContext.sql("select countDistinct(order_date) as newcount  from test group by order_date").show
+
+sqlContext.sql("select rpad('sudha',10,'*')").show
+sqlContext.sql("select lpad('sudha',10,'*')").show
+sqlContext.sql("select trim('      sudha     ')").show
+sqlContext.sql("select ltrim('      sudha')").show
+sqlContext.sql("select rtrim('sudha     ')").show
+sqlContext.sql("select coalesce(null,10)").show
+sqlContext.sql("select round(123454.54328,2)").show
+sqlContext.sql("select upper('sudhakar')").show
+sqlContext.sql("select lower('SUDHAKAR')").show
+sqlContext.sql("select length('hello world this is hive sql')").show
+sqlContext.sql("select substr('hello world this is hive sql',7,5)").show
+sqlContext.sql("select initcap('hello world this is hive sql')").show
+sqlContext.sql("select md5('hello is world this is hive sql is')").show
+sqlContext.sql("select day/month/year (current_date)").show
+sqlContext.sql("select add_months(current_date,-1)").show
+sqlContext.sql("select months_between(current_date,date '2016-08-10')").show
+sqlContext.sql("select last_day(date '2016-08-10')").show
+sqlContext.sql("select next_day(date '2016-08-10','sun/mon/tue/wed/thu/fri/sat')").show
+
+sqlContext.sql("select pmod(10,3)").show
+sqlContext.sql("select reverse('SUDHAKAR')").show
+sqlContext.sql("select to_date('2014-05-12'))").show
+sqlContext.sql("select round(months_between(current_date,to_date('2014-05-12')),0)").show
+sqlContext.sql("select trunc(current_date,'YYYY/MM/DD'").show
+sqlContext.sql("select date_format(current_date,'MM-dd-yyyy')").show
+sqlContext.sql("select date_add(current_date,10)").show
+sqlContext.sql("select date_sub(current_date,10)").show
+sqlContext.sql("select datediff(current_date,date'2014-05-21')").show
+
+sqlContext.sql("select format_number(100,2)").show
+sqlContext.sql("select concat('spark','-developer')").show
+
+sqlContext.sql("select from_unixtime('45684867')) ").show
+
+
+
+aggregateByKey()
+----------------
+
+rev.aggregateByKey((0.0, 0))(
+(acc, ele) => (acc._1 + ele, acc._2 + 1),
+(tl, mid) => (tl._1 + mid._1, tl._2 + mid._2)
+).take(2).foreach(println)
+
+
+
+
+
+
+
+
+
+
+

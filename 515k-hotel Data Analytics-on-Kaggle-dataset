@@ -1,0 +1,58 @@
+515k-hotel DataSet
+
+Hadoop fs -put datasets/Hotel_Reviews.csv datasets/
+
+val Hotel_header=sc.textFile("datasets/Hotel_Reviews.csv").first
+val Hotel_rdd=sc.textFile("datasets/Hotel_Reviews.csv").filter(r=>(r !=Hotel_header))
+
+//List all the hotels available in Europe in alphabetical order.
+val res1=Hotel_rdd.map(r=>(r.split(",")(4))).distinct.sortBy(k => k, true)
+res1.map(r=>r).saveAsTextFile("")
+
+//Rank the hotels according to the Average Score of the hotel
+val res2=Hotel_rdd.map(r=>(r.split(",")(4),r.split(",")(3).toFloat)).distinct.map(r=>(r.swap)).sortByKey(false).map(r=>r._2 +"*" + r._1)
+res2.saveAsTextFile("")
+
+//Which Country people most Likes to Visit Europe
+val res3=Hotel_rdd.map(r=>(r.split(",")(5),1)).reduceByKey(_ + _).sortBy(k=>k._2,false)
+
+//How many Indians visted Europe on Each Month and sort by max visitors
+val res4=Hotel_rdd.filter(r=>(r.split(",")(5).trim == "India" )).map(r=>(r.split(",")(2))).map(r=>((r.split("/")(2).toInt,r.split("/")(0).toInt),1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1._1+"-"+r._1._2+"@"+r._2)
+
+//most Postive comment per hotel
+val res5=Hotel_rdd.map(r=>(r.split(",")(4),r.split(",")(9))).groupByKey().flatMap(r=>(r._2.toList.map(r=>(r.split("\\W+"))).groupBy(y => y._1).map{case (x,y) => x ->y.length }.toArray.sortBy(k=>-k._2).head))
+
+
+// list all hotels in Country wise
+val res6=Hotel_rdd.map(r=>(r.split(",")(0),r.split(",")(4))).map(r=>(r._1.substring(r._1.lastIndexOf(" ")+1, r._1.length()),r._2)).distinct.sortByKey().map(r=>r._1+":"+r._2)
+
+//which Country in Europe has more Hotels, List top 5 Countries according to Hotels\
+val res7=Hotel_rdd.map(r=>(r.split(",")(0),r.split(",")(4))).map(r=>(r._1.substring(r._1.lastIndexOf(" ")+1, r._1.length()),r._2)).distinct.map(r=>(r._1,1)).reduceByKey(_ + _).sortBy(k=>k._2,false)
+
+//Rank the hotels according to the  reviewer_score
+val res8=Hotel_rdd.map(r=>(r.split(",")(4),r.split(",")(12).toFloat)).aggregateByKey((0.0, 0))(
+(x, y) => (x._1 + y, x._2 +1),
+(x, y) => (x._1 + y._1, x._2 + y._2)
+).map(r=>(r._1,math.round(r._2._1/r._2._2))).sortBy(r=>r._2,false).map(r=>r._1+":"+r._2)
+
+//Find the Most Busiest hotels
+val res10=Hotel_rdd.map(r=>(r.split(",")(0))).map(r=>(r,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1+":"+r._2)
+
+//Find the all review writes from Europe citizens
+val res11=Hotel_rdd.filter(r=>(r.split(",")(5).trim =="Spain" || r.split(",")(5).trim =="Netherlands" ||r.split(",")(5).trim == "Kingdom" ||r.split(",")(5).trim == "Italy" ||r.split(",")(5).trim == "France" ||r.split(",")(5).trim =="Austria")).map(r=>(r.split(",")(0),r.split(",")(5).trim)).map(r=>(r,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1._1+":"+r._1._2+":"+r._2)
+
+
+//Whose Country People Most unlike to give reviews
+val res12=Hotel_rdd.map(r=>(r.split(",")(5).trim)).map(r=>(r,1)).reduceByKey(_ + _).sortBy(k=>k._2,true).map(r=>r._1+":"+r._2)
+
+//Hotel which has most Negative Comments 
+val res13=Hotel_rdd.map(r=>(r.split(",")(4),r.split(",")(7).toInt)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1+":"+r._2)
+
+
+
+
+
+
+
+
+

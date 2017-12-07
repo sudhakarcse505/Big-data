@@ -1,0 +1,123 @@
+Update & delete on Hive tables
+*******************************
+
+set hive.txn.manager;
+hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DummyTxnManager;
+
+set hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager;
+set hive.support.concurrency=true;
+set hive.enforce.bucketing=true;
+set hive.exec.dynamic.partition.mode=nonstrict;
+set hive.compactor.initiator.on=true;
+set hive.compactor.worker.threads=2;
+
+
+create table retail.test(id int, name string,sal int)
+clustered by (id) into 4 buckets
+stored as orc
+tblproperties("transactional"="true");
+
+hadoop fs -ls /user/hive/warehouse/retail.db/test/
+
+insert into table test values(1,'sudhakar',1000),(2,'Hari',900),(3,'Janu',800);
+insert into table test values(2,'Hari',900);
+insert into table test values(3,'Janu',800);
+
+
+select * from test;
+
+update test set sal=500 where name='Janu';
+delete from test where id =2;
+delete from test;
+
+----Subqueries 
+-----support only from clause subqueries;
+select * from (select order_status,count(1) from orders_avro group by order_status ) a;
+select count(1) from from orders_avro where order_status in(select distinct order_status from orders_avro);
+
+select * from orders_avro 
+rank() over(order_by order_id desc)=5;
+
+select * from test a where 1=(select count(distinct sal) from test b where a.sal<b.sal);
+
+CTAS
+----
+create table test1(order_id int,order_satus string,order_date string)
+row format delimited 
+fields terminated by '|'
+stored as textfile;
+
+insert into table test1
+select order_cust_id,order_status,order_date from orders_avro order by 1 limit 10;
+
+insert overwrite table test1
+select order_cust_id,order_status,order_date from orders_avro order by 1 limit 20;
+
+create table test1(order_id int,order_satus string,order_date string)
+clustered by (order_id) into 3 buckets
+row format delimited 
+fields terminated by '|'
+stored as textfile;
+
+insert into table test1
+select order_cust_id,order_status,order_date from orders_avro order by 1 limit 10;
+
+insert overwrite table test1
+select order_cust_id,order_status,order_date from orders_avro order by 1 limit 20;
+
+*****Store into hdfs/local files ************
+INSERT OVERWRITE DIRECTORY "/user/cloudera/test1" SELECT * from test1;
+
+INSERT OVERWRITE DIRECTORY "/user/cloudera/test1"
+INSERT OVERWRITE DIRECTORY "/user/cloudera/stage"
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY '#'
+STORED AS TEXTFILE
+SELECT * from test1;
+
+
+****changing the file formates & compressions****
+create database compress;
+use compress;
+set hive.exec.compress.output=false;
+set mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.SnappyCodec
+
+create table compress.orders 
+row format delimited
+fields terminated by '|'
+stored as textfile as
+select to_date(order_date) as order_dt,order_id, order_status from sudha.orders;
+
+
+set hive.exec.compress.output=true;
+set mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.SnappyCodec;
+
+create table compress.orders1
+row format delimited
+fields terminated by '|'
+stored as textfile as
+select to_date(order_date) as order_dt,order_id, order_status from sudha.orders;
+
+set mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.B2zipCodec;
+create table compress.orders_avro
+stored as avro as
+select order_dt,order_id, order_status from orders1;
+
+set mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.GzipCodec;
+create table compress.orders_orc_gzip
+stored as orc as
+select order_dt,order_id, order_status from orders1;
+
+create table compress.orders_seq_gzipl
+stored as sequencefile as
+select order_dt,order_id, order_status from orders1;
+
+set hive.exec.compress.output=false;
+
+create table compress.orders_orc
+stored as orc as
+select order_dt,order_id, order_status from orders1;
+
+select order_status,count(order_id) orders,min(order_id) lag1,max(order_id) lead1
+from orders group by order_status order by lag1;
+

@@ -1,0 +1,22 @@
+*******Twitter Sentiment Analysis***************************************
+val twts=sqlContext.read.json("file:///home/cloudera/twitter_json_dataset.txt")
+
+twt.write.json("tweets_sentiment")
+
+CREATE TABLE tweets(id bigint, text string)
+ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+STORED AS TEXTFILE 
+LOCATION '/user/cloudera/tweets_sentiment';
+
+create table tweets_prcs as select id, split(text,' ') as words from tweets;
+
+create table tweets_prcs1 as select id,word from tweets_prcs LATERAL VIEW explode(words) w as word;
+
+create table affin(word string,rating int) row format delimited fields terminated by ',' stored as textfile;
+
+LOAD DATA LOCAL INPATH 'file:///home/cloudera/AFFIN_DIC.txt' INTO TABLE affin;
+
+create table tweets_sentiments as
+select id,t.word,rating from tweets_prcs1 t left outer Join affin a on a.word=t.word;
+
+select id,avg(rating) as tweets_ratings from tweets_sentiments group by id order by tweets_ratings desc;

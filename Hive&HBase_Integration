@@ -1,0 +1,8 @@
+create table orders_hbase1(order_date string,order_status string, total_orders int)
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES("hbase.columns.mapping"=":key, order:status, order:total_orders")
+TBLPROPERTIES("hbase.table.name"="log");
+
+INSERT OVERWRITE table orders_hbase1 select to_date(order_date),order_status,count(*) from orders group by order_date,order_status; 
+
+INSERT OVERWRITE table orders_hbase select row_number() over(order by order_date,order_status) as rnm, to_date(order_date) as t, order_status,total_orders from ( select order_date, order_status,count(order_id) as total_orders from orders group by order_date,order_status) a;

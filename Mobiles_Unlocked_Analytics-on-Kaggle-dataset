@@ -1,0 +1,137 @@
+
+cat datasets/Amazon_Unlocked_Mobile.txt | head -10
+
+hadoop fs -put datasets/Amazon_Unlocked_Mobile.txt datasets/
+
+create table Mobiles (Product_Name String,
+Brand_Name String,
+Price String, 
+Rating String,
+Reviews String,
+Reviews_Voting String
+) 
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+"separatorChar"="," ,
+"quoteChar"='"' ,
+"escapeChar"="\\"
+) 
+STORED AS TEXTFILE;
+
+LOAD DATA INPATH "/user/cloudera/datasets/Amazon_Unlocked_Mobile.csv" OVERWRITE INTO TABLE Mobiles;
+
+create table h1b_tab ROW FORMAT DELIMITED fields terminated by '|' as select * from h1b;
+
+//Not running, we have to Check On this.
+select Product_name,
+case when (coalesce(Product_name,"unknown") or trim(Product_name)="") then "unknown" else Product_name end as product,
+case when (coalesce(Brand_name,"unknown") or trim(Brand_name)="") then "unknown" else Brand_name end as brand,
+case when (coalesce(Price,0.0) or trim(Price)="" or trim(Price)="na") then 0.0 else Price end as price,
+case when (coalesce(Rating,0) or trim(Rating)="") then 0 else Rating end as rating1,
+reviews,case when coalesce(Reviews_Voting,0) or trim(Reviews_Voting)="" then 0 else Reviews_Voting end as review_vote 
+from Mobiles where (Reviews_Voting is null or Reviews_Voting="");
+
+
+Create table Mobile_tab3 ROW FORMAT DELIMITED fields terminated by '|' as
+select Product_Name,
+case when Brand_Name="" then "UNKNOWN" else Brand_Name end as Brand,
+coalesce(Price,0) as PRCE,Rating,Reviews_Voting,Reviews from Mobiles
+where (Product_Name is not null and Product_Name !="") and (Brand_Name is not null and Brand_Name !="") 
+and (Price is not null and Price !="" or price !="NA") and (Reviews_Voting is not null and Reviews_Voting !="");
+
+hadoop fs -cp /user/hive/warehouse/datasets.db/mobile_tab /user/cloudera/datasets/
+
+Hive-Analytics Answers
+----------------------
+////Total Unique products in each brand.
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/unique-products-in-Brand" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select  brand_name,count(distinct product_name) as MblCount
+from Mobile_tab3 group by brand_name order by MblCount desc;
+
+//Assign Ranking to Brand and products by review ratings
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Ranks-product-user-review" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select brand_name,product_name, Votes, Dense_Rank() over(order by Votes desc) as rnk from (
+select brand_name,product_name, sum(reviews_voting) as Votes
+from Mobile_tab3 group by brand_name,product_name 
+) A order by rnk asc limit 100;
+
+//Sort the Brand value by price
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Brand-value-by-price" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select brand_name, round(sum(Price),3) As total from Mobile_tab3 group by brand_name order by total desc;
+
+//Find the Top 5 max price Products in each brand
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Max-Price-Products-Each-Brand" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select distinct brand_name,price,product_name rnk1 from (
+select brand_name,product_name,price,row_number() over(partition by price order by price desc) as rnk1 from (
+select brand_name,product_name,price,rnk from (
+select brand_name,product_name,price, dense_rank() over(partition by brand_name order by price desc) as rnk
+from Mobile_tab3) A where rnk <=5 ) A1 ) A2 where rnk1=1 order by brand_name,price desc limit 100;
+
+//Which rating Mobiles unlocked most?
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Most-Unlocked-Mobiles-by-Rating" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select Rating,count(1) as unlocked from Mobile_tab3 group by Rating order by unlocked desc
+
+//which brand and Product could get more user ratings
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Products-liked-most" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select Brand_name,Product_name, sum(coalesce(reviews_voting,0)) as Usr_Rating
+from Mobile_tab3 group by Brand_name,Product_name order by Usr_Rating desc,Brand_name limit 50;
+
+//Which is the lowest and maximize Cost products on Each brands.
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Costly-Cheap-Products" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select Brand_name,Max(Price) as Mx,Min(Price) as Mn from Mobile_tab3 group by Brand_name order by Mx desc
+
+
+//Rank the Products in Apple brand by Review Rating an Price
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/RankingProductsbyReview-Rating-Apple" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+Select Product_Name, Vote, Prce,dense_rank() over(order by Vote desc) as rnk1  from (
+Select Product_Name, Vote, Prce,rnk  from (
+Select Product_Name, cast(reviews_voting as int) as Vote, cast(Price as double) as Prce,
+dense_rank() over(partition by Product_Name,cast(Price as double) order by cast(reviews_voting as int) desc) as rnk
+from Mobile_tab3 where Brand_name="Apple" and trim(Price) !="NA" ) A where rnk=1
+group by Product_Name, Vote, Prce,rnk ) A1 order by rnk1 asc;
+
+
+//Rank the Products in Samsung brand by Review Rating an Price
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/RankingProductsbyReview-Rating-Samsung" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+Select Product_Name, Vote, Prce,dense_rank() over(order by Vote desc) as rnk1  from (
+Select Product_Name, Vote, Prce,rnk  from (
+Select Product_Name, cast(reviews_voting as int) as Vote, cast(Price as double) as Prce,
+dense_rank() over(partition by Product_Name,cast(Price as double) order by cast(reviews_voting as int) desc) as rnk
+from Mobile_tab3 where Brand_name="Samsung" and trim(Price) !="NA" ) A where rnk=1
+group by Product_Name, Vote, Prce,rnk ) A1 order by rnk1 asc limit 100;
+
+//Suggest User to Buy a mobile with-in 500.0$ by listing Top 50 mobiles by best User Believe Models in any Brand
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Best-Models-unser-suggest" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+Select Product_Name, Vote, Prce,dense_rank() over(order by Vote desc) as rnk1  from (
+Select Product_Name, Vote, Prce,rnk  from (
+Select Product_Name, cast(reviews_voting as int) as Vote, cast(Price as double) as Prce,
+dense_rank() over(partition by Product_Name,cast(Price as double) order by cast(reviews_voting as int) desc) as rnk
+from Mobile_tab3 where trim(Price) !="NA" and trim(Price) <=500.00) A where rnk=1
+group by Product_Name, Vote, Prce,rnk ) A1 order by rnk1 asc limit 50;
+
+//Find the Top 10 Brands sold most of the Unlocked Products
+INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/Most-Sold-Mobiles-by-Brand" ROW FORMAT DELIMITED
+fields terminated by '#' stored as textfile
+select Brand_Name, Count(1) As Total_Sold_Mobiles from Mobile_tab3 group by Brand_Name order by Total_Sold_Mobiles desc limit 10;
+
+
+
+
+
+
+
+
+
+
+
+

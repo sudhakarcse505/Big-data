@@ -1,0 +1,114 @@
+H-1B Visa data set
+------------------
+
+sed s"/\"//g" sample |sed s'/ //g'
+
+hadoop fs -put h-1b_applications.csv .
+
+Hive:
+
+create table h1b (no String,CASE_STATUS String, EMPLOYER_NAME String, 
+SOC_NAME String,
+JOB_TITLE String,
+FULL_TIME_POSITION String,
+WAGE String,
+YEAR String,
+WORK_SITE String,
+lon String,
+lat String ) 
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+"separatorChar"="," ,
+"quoteChar"='"' ,
+"escapeChar"="\\"
+) 
+STORED AS TEXTFILE;
+
+LOAD DATA INPATH "/user/cloudera/datasets/h-1b_applications.csv" OVERWRITE INTO TABLE h1b;
+
+create table h1b_tab ROW FORMAT DELIMITED fields terminated by '|' as select * from h1b;
+
+Queries to find the Answers:
+----------------------------
+select YEAR,COUNT(1) AS APPLICATIONS from h1b where trim(JOB_TITLE) ="DATA ENGINEER" 
+group by year order by year asc;
+
+select WORK_SITE,count(1) as NO_OF_PLACE from h1b where trim(JOB_TITLE) ="HARDWARE ENGINEER" group by WORK_SITE order by PLACE DESC
+
+SELECT SOC_NAME,Count(1) AS NO_OF_DATA_SCIENTISTS FROM H1B WHERE TRIM(JOB_TITLE)="DATA SCIENTIST" GROUP BY SOC_NAME ORDER BY NO_OF_DATA_SCIENTISTS desc;
+
+SELECT YEAR,EMPLOYER_NAME,Petitions FROM (
+SELECT YEAR,EMPLOYER_NAME,Petitions, DENSE_RANK() over(partition by YEAR order by Petitions DESC) as RNK from (
+SELECT YEAR,EMPLOYER_NAME,Count(1) as Petitions FROM H1B GROUP BY YEAR,EMPLOYER_NAME order by Petitions desc
+) A ) A1 WHERE RNK <=10;
+
+Smae Solutions can derive in spark-shell RDD's
+----------------------------------------------
+spark-shell;
+val header=sc.textFile("datasets/h1b_tab").first
+val h1b_dataset=sc.textFile("datasets/h1b_tab").filter(r=>(r!=header))
+h1b_dataset.take(5).foreach(println)
+
+//Is Number of Petitions with "DATA ENGINEER" JOb Title increasing Over time?
+val res1=h1b_dataset.filter(r=>(r.split("\\|")(4).trim =="DATA ENGINEER")).map(r=>(r.split("\\|")(7).toInt)).map(r=>(r,1)).reduceByKey(_ + _).map(r=>(r.swap)).sortByKey(false).map(r=>r._2 + "*" + r._1)
+
+//Which Partof the US has more "HARDWARE ENGINEERING" Jobs?
+val res2=h1b_dataset.filter(r=>(r.split("\\|")(4).trim =="HARDWARE ENGINEER")).map(r=>(r.split("\\|")(8))).map(r=>(r,1)).reduceByKey(_ + _).map(r=>(r.swap)).sortByKey(false).map(r=>r._2 + "*" + r._1)
+
+//Which Industry has the Most Number of data scientists Postions?
+val res3=h1b_dataset.filter(r=>(r.split("\\|")(4).trim =="DATA SCIENTIST")).map(r=>(r.split("\\|")(3))).map(r=>(r,1)).reduceByKey(_ + _).map(r=>(r.swap)).sortByKey(false).map(r=>r._2 + "*" + r._1)
+
+//Which top 10 Employers has filed the most petitons in each year?
+val res4=h1b_dataset.filter(r=>(!r.split("\\|")(7).isEmpty)).map(r=>(r.split("\\|")(7),r.split("\\|")(2))) .map(r=>(r,1)).reduceByKey(_ + _).map(r=>(r.swap)).sortByKey(false).map(r=>r._2._1 + "|" + r._2._2 + "|" + r._1)
+
+
+val final_res4=res4.map(r=>(r.split("\\|")(0),r)).filter(r=>(r._1.trim.length ==4)).sortByKey().groupByKey().flatMap(r=>(r._2.toList.sortBy(r=>(-r.split("\\|")(2).toInt)).take(10)))
+
+//Find out top 5 Industries applying for H1B every year
+val res5=h1b_dataset.filter(r=>(!r.split("\\|")(7).isEmpty)).filter(r=>(r.split("\\|")(7).trim.length ==4)).map(r=>(r.split("\\|")(7).toInt,r.split("\\|")(3))).map(r=>(r,1)).reduceByKey(_ + _).sortBy(r=>(r._1._1,true)).map(r=>(r._1._1+"|"+r._1._2+"|"+r._2))
+
+val fin_res5=res5.map(r=>(r.split("\\|")(0),r)).groupByKey().flatMap(r=>(r._2.toList.sortBy(r=>(-r.split("\\|")(2).toInt)).take(5))).sortBy(r=>(r.split("\\|")(0).toInt))
+
+//Compare employees min,max and avg wages on each Job Tille for every year.
+
+val res6=h1b_dataset.filter(r=>(!r.split("\\|")(7).isEmpty)).filter(r=>(r.split("\\|")(7).trim.length ==4)).filter(r=>(r.split("\\|")(6).trim !="NA")).map(r=>((r.split("\\|")(7).toInt,r.split("\\|")(4)),r.split("\\|")(6).toFloat))
+
+
+val fin_res6=res6.aggregateByKey((0.0, 999999999.0, 0.0, 0))(
+(x, y) => (math.max(x._1, y), math.min(x._2, y), x._3 + y, x._4 +1),
+(x, y) => (math.max(x._1, y._1), math.min(x._2, y._2), x._3 + y._3, x._4 + y._4)
+).map(r=>(r._1._1, r._1._2, r._2._1,r._2._2, r._2._3/r._2._4)).map(r=>r._1+"*"+r._2+"*"+r._3+"*"+r._4+"*"+r._5)
+
+
+
+
+//Store all the solutions into textFile with '*' as delimiter
+
+res1.saveAsTextFile("datasets/h1b-Answers/data-engineers")
+res2.saveAsTextFile("datasets/h1b-Answers/hardware-engineers-locations") 
+res3.saveAsTextFile("datasets/h1b-Answers/data-Scienciests-Industries")
+final_res4.saveAsTextFile("datasets/h1b-Answers/top-employers-applications")
+fin_res5.saveAsTextFile("datasets/h1b-Answers/top-Industries-everyyear")
+fin_res6.saveAsTextFile("datasets/h1b-Answers/wages-compare-everyyear-jobtitle")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
