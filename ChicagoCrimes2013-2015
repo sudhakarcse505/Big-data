@@ -1,86 +1,163 @@
-ChicagoCrimes2013-2015
-
+ChicagoCrimes2013-2015 datasets From ChicagoStatedatasets
+*********************************************************
+//Moving File to Hadoop Cluster
 Hadoop fs -put datasets/Hotel_Reviews.csv datasets/
 
+//removing the Header of the datasets
 val Header=sc.textFile("datasets/Crimes_2013.csv").first
 val crimes_ds=sc.textFile("datasets/Crimes_*.csv").filter(r=>(r != Header))
 
 Import org.apache.hadoop.io._
-//Get Monthly Crime Count by Type using RDD
-val res=crimes_ds.map(r=>(r.split(",")(5),r.split(",")(2))).map(r=>(r._1,r._2.split(" ")(0))).map(r=>(r._2.split("/")(2),r._2.split("/")(0),r._1)).map(r=>(r._1+"-"+r._2,r._3)).map(r=>(r,1)).reduceByKey(_ + _).sortByKey(false).map(r=>(r._1._1,r._1._2+":"+r._2))
 
+//Get Monthly Crime Count by Type using RDD
+val res=crimes_ds.map(r=>(r.split(",")(5),r.split(",")(2)))
+                 .map(r=>(r._1,r._2.split(" ")(0)))
+                 .map(r=>(r._2.split("/")(2),r._2.split("/")(0),r._1))
+                 .map(r=>(r._1+"-"+r._2,r._3))
+                 .map(r=>(r,1))
+                 .reduceByKey(_ + _)
+                 .sortByKey(false)
+                 .map(r=>(r._1._1,r._1._2+":"+r._2))
+
+//save the result to file
 res.saveAsSequenceFile("datasets/Crime-Count-by-Type")
 
 //Get all the Crimes registered in the period 2013-2015 and save as TextFile with Pipe Delimiter using GZIP Compression
-val res2=crimes_ds.map(r=>(r.split(",")(5).trim)).distinct.saveAsTextFile("register-Crimes",classOf[GZipCodec])
+val res2=crimes_ds.map(r=>(r.split(",")(5).trim))
+                  .distinct
+
+//save the data as TextFile Using GZip Compression
+res2.saveAsTextFile("register-Crimes",classOf[GZipCodec])
 
 //Get Monthly Crime Count by Type using DataFrames
-val res3=crimes_ds.map(r=>(r.split(",")(5),r.split(",")(2))).map(r=>(r._1,r._2.split(" ")(0))).map(r=>(r._2.split("/")(2),r._2.split("/")(0),r._1)).map(r=>(r._1+"-"+r._2,r._3))
+val res3=crimes_ds.map(r=>(r.split(",")(5),r.split(",")(2)))
+                  .map(r=>(r._1,r._2.split(" ")(0)))
+                  .map(r=>(r._2.split("/")(2),r._2.split("/")(0),r._1))
+                  .map(r=>(r._1+"-"+r._2,r._3))
 
-res3.toDF("YearMonth","CrimeType").groupBy(col("yearMonth"),col("CrimeType")).agg(count(col("CrimeType")).as("Total_crimes")).orderBy(desc("yearMonth"),desc("CrimeType")).write.json("datasets/Crime-Count-by-Type-DF")
+//Converting RDD to DataFrame, Perform Aggregations and store the Result into the Json File
+  res3.toDF("YearMonth","CrimeType")
+      .groupBy(col("yearMonth"),col("CrimeType"))
+      .agg(count(col("CrimeType"))
+      .as("Total_crimes"))
+      .orderBy(desc("yearMonth"),desc("CrimeType"))
+      .write.json("datasets/Crime-Count-by-Type-DF")
 
 //Get Monthly Crime Count by Type using SQL
 res3.toDF("YearMonth","CrimeType").registerTempTable("Crimes")
 
-val res4=sqlContext.sql("select YearMonth,CrimeType,count(CrimeType) as Total from Crimes group by YearMonth,CrimeType order by YearMonth desc,CrimeType desc ")
+val res4=sqlContext.sql("select YearMonth,CrimeType,count(CrimeType) as Total" + 
+                         "from Crimes group by YearMonth,CrimeType" +
+                         "order by YearMonth desc,CrimeType desc")
 
+
+//Importing databricks package for Avro ralated Stuff
 import com.databricks.spark.avro._
 
+//Set the Parameter to avro uncompressed to store data as uncompressed Format
 sqlContext.setConf("spark.sql.avro.compression.codec","uncompressed")
+
+//Store the Result as Avro file
 res4.write.avro("datasets/Crime-Count-by-Type-SQL-avro")
 
 //Is the Crimes Count Increse over every year?
-val res5=sqlContext.sql("select substr(YearMonth,1,4) as Year, Count(1) as CrimeCount from Crimes group by substr(YearMonth,1,4) order by year asc")
+val res5=sqlContext.sql("select substr(YearMonth,1,4) as Year, Count(1) as CrimeCount" +
+                        "from Crimes" + 
+                        "group by substr(YearMonth,1,4) order by year asc")
 
+//Set the Parameter to ORC uncompressed to store data as uncompressed Format
 sqlContext.setConf("spark.sql.orc.compression.codec","uncompressed")
+
+//Store the Result as ORC file
 res5.write.orc("datasets/Crimes-Count-year")
 
 //Tell me Place where Most Of the Accidents/Incidents took place as per Location_Description
-val res6=crimes_ds.map(r=>(r.split(",")(7).trim)).map(r=>(r,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1 + ":" + r._2)
+val res6=crimes_ds.map(r=>(r.split(",")(7).trim))
+                  .map(r=>(r,1))
+                  .reduceByKey(_ + _)
+                  .sortBy(k=>k._2,false)
+                  .map(r=>r._1 + ":" + r._2)
 
 //Which Community Area Had most Incidents?
-val res7=crimes_ds.filter(r=>(r.split(",")(13).trim.length > 0)).filter(r=>(r.split(",")(13).trim != "false")).map(r=>(r.split(",")(13).toInt)).map(r=>(r,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>(r._1.toInt,r._2.toInt))
+val res7=crimes_ds.filter(r=>(r.split(",")(13).trim.length > 0))
+                  .filter(r=>(r.split(",")(13).trim != "false"))
+                  .map(r=>(r.split(",")(13).toInt))
+                  .map(r=>(r,1))
+                  .reduceByKey(_ + _)
+                  .sortBy(k=>k._2,false)
+                  .map(r=>(r._1.toInt,r._2.toInt))
 
+//Load the Community Area File and Remove the Header
 val Comunity_Header=sc.textFile("datasets/Crimes_ComAreas.csv").first 
-val Comunity_ds=sc.textFile("datasets/Crimes_ComAreas.csv").filter(r=>(r !=Comunity_Header)).filter(r=>(r != ",")).map(r=>(r.split(",")(0).toInt,r.split(",")(1).trim))
+val Comunity_ds=sc.textFile("datasets/Crimes_ComAreas.csv")
+               .filter(r=>(r !=Comunity_Header))
+               .filter(r=>(r != ","))
+               .map(r=>(r.split(",")(0).toInt,r.split(",")(1).trim))
 
-val res7_1=res7.join(Comunity_ds).map(r=>(r._1,r._2._2,r._2._1))
+//Joining Comminity Area to the Crimes dataseta and get fetch the Community Area Name
+val res7_1=res7.join(Comunity_ds)
+               .map(r=>(r._1,r._2._2,r._2._1))
 
+//save The Result to a TextFile
 res7_1.map(r=>r._1+"|"+r._2+"|"+r._3).saveAsTextFile("Most-Accidents-Community")
 
 //Which District Policies Arrested  most
+val res8=crimes_ds.filter(r=>(r.split(",")(11).trim.length > 0 && r.split(",")(11).trim.length < 4))
+                  .filter(r=>(r.split(",")(11).trim != "true"))
+                  .filter(r=>(r.split(",")(11).trim != "false"))
+                  .filter(r=>(r.split(",")(8).trim =="true"))
+                  .map(r=>(r.split(",")(11).toInt))
+                  .map(r=>(r,1))
+                  .reduceByKey(_ + _)
+                  .sortBy(k=>k._2,false)
+                  .map(r=>(r._1.toInt,r._2.toInt))
 
-val res8=crimes_ds.filter(r=>(r.split(",")(11).trim.length > 0 && r.split(",")(11).trim.length < 4)).filter(r=>(r.split(",")(11).trim != "true")).filter(r=>(r.split(",")(11).trim != "false")).filter(r=>(r.split(",")(8).trim =="true")).map(r=>(r.split(",")(11).toInt)).map(r=>(r,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>(r._1.toInt,r._2.toInt))
-
+//Save the Result to a TextFile
 res8.map(r=>r._1+"|"+r._2).saveAsTextFile("Most-ARRESTED-Distincts")
 
 //Which Ward has less Incidents
-val res9=crimes_ds.filter(r=>(r.split(",")(12).trim.length > 0 && r.split(",")(12).trim.length < 4)).filter(r=>(r.split(",")(12).trim != "true")).filter(r=>(r.split(",")(12).trim != "false")).map(r=>(r.split(",")(12).toInt)).map(r=>(r,1)).reduceByKey(_ + _).sortBy(k=>k._2,true).map(r=>(r._1.toInt,r._2.toInt))
+val res9=crimes_ds.filter(r=>(r.split(",")(12).trim.length > 0 && r.split(",")(12).trim.length < 4))
+                  .filter(r=>(r.split(",")(12).trim != "true"))
+                  .filter(r=>(r.split(",")(12).trim != "false"))
+                  .map(r=>(r.split(",")(12).toInt))
+                  .map(r=>(r,1))
+                  .reduceByKey(_ + _)
+                  .sortBy(k=>k._2,true)
+                  .map(r=>(r._1.toInt,r._2.toInt))
 
+//Set The Paramer to Parquet file
 sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
 
+//Store the Result into parquet File without any compression
 res9.map(r=>(r._1,r._2)).toDF("Ward_No","WardCount").write.parquet("less-Incidents-Wards")
 
 //Which Incidents occured Most during 2013-2017 Period
-val res10=crimes_ds.map(r=>(r.split(",")(5).trim,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1+"~"+r._2)
+val res10=crimes_ds.map(r=>(r.split(",")(5).trim,1))
+                   .reduceByKey(_ + _)
+                   .sortBy(k=>k._2,false)
+                   .map(r=>r._1+"~"+r._2)
 
-//Which incident Police would Arrest most
-val res10=crimes_ds.filter(r=>(r.split(",")(8).trim =="true")).map(r=>(r.split(",")(5).trim,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1+"~"+r._2)
+ res10.collect.foreach(println)   //Printint the Result 
+ 
+//Which incident PoliceStations would Arrest most
+val res11=crimes_ds.filter(r=>(r.split(",")(8).trim =="true"))
+                   .map(r=>(r.split(",")(5).trim,1))
+                   .reduceByKey(_ + _)
+                   .sortBy(k=>k._2,false)
+                   .map(r=>r._1+"~"+r._2)
+
+res11.collect.foreach(println)   //Printint the Result 
 
 //List all the accidents happen in a day , this is the day is only hadppen max incidents
-val res11=crimes_ds.map(r=>(r.split(",")(2))).map(r=>(r.split(" ")(0).toString,1)).reduceByKey(_ + _).sortBy(k=>k._2,false).map(r=>r._1.toString).take(1)
+val res12=crimes_ds.map(r=>(r.split(",")(2)))
+                   .map(r=>(r.split(" ")(0).toString,1))
+                   .reduceByKey(_ + _)
+                   .sortBy(k=>k._2,false)
+                   .map(r=>r._1.toString)
+                   .take(1)
 
+res12.collect.foreach(println)   //Printint the Result 
+val res13=crimes_ds.filter(r=>{val d=r.split(",")(2); d.split(" ")(0) ==res12(0)})
 
-val res12=crimes_ds.filter(r=>{val d=r.split(",")(2); d.split(" ")(0) ==res11(0)})
-
-res12.saveAsTextFile("datasets/most-incidents-day")
-
-
-
-
-
-
-
-
-
+res13.saveAsTextFile("datasets/most-incidents-day")
 
