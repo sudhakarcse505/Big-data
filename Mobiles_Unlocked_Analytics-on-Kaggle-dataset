@@ -1,8 +1,10 @@
+Amazone_Unlocked_Mobiles Dataset Analytics From Kaggle
+******************************************************
 
-cat datasets/Amazon_Unlocked_Mobile.txt | head -10
-
+//Move the Dataset to Hadop Cluster
 hadoop fs -put datasets/Amazon_Unlocked_Mobile.txt datasets/
 
+//Create a table in Hive 
 create table Mobiles (Product_Name String,
 Brand_Name String,
 Price String, 
@@ -18,20 +20,13 @@ WITH SERDEPROPERTIES (
 ) 
 STORED AS TEXTFILE;
 
+//Load data to the table from dataset
 LOAD DATA INPATH "/user/cloudera/datasets/Amazon_Unlocked_Mobile.csv" OVERWRITE INTO TABLE Mobiles;
 
 create table h1b_tab ROW FORMAT DELIMITED fields terminated by '|' as select * from h1b;
 
-//Not running, we have to Check On this.
-select Product_name,
-case when (coalesce(Product_name,"unknown") or trim(Product_name)="") then "unknown" else Product_name end as product,
-case when (coalesce(Brand_name,"unknown") or trim(Brand_name)="") then "unknown" else Brand_name end as brand,
-case when (coalesce(Price,0.0) or trim(Price)="" or trim(Price)="na") then 0.0 else Price end as price,
-case when (coalesce(Rating,0) or trim(Rating)="") then 0 else Rating end as rating1,
-reviews,case when coalesce(Reviews_Voting,0) or trim(Reviews_Voting)="" then 0 else Reviews_Voting end as review_vote 
-from Mobiles where (Reviews_Voting is null or Reviews_Voting="");
 
-
+//Create a New Table From dataset which doesn't has any nulls/ empty values
 Create table Mobile_tab3 ROW FORMAT DELIMITED fields terminated by '|' as
 select Product_Name,
 case when Brand_Name="" then "UNKNOWN" else Brand_Name end as Brand,
@@ -39,10 +34,10 @@ coalesce(Price,0) as PRCE,Rating,Reviews_Voting,Reviews from Mobiles
 where (Product_Name is not null and Product_Name !="") and (Brand_Name is not null and Brand_Name !="") 
 and (Price is not null and Price !="" or price !="NA") and (Reviews_Voting is not null and Reviews_Voting !="");
 
-hadoop fs -cp /user/hive/warehouse/datasets.db/mobile_tab /user/cloudera/datasets/
 
-Hive-Analytics Answers
-----------------------
+Analytics Using Hive Queries
+****************************
+
 ////Total Unique products in each brand.
 INSERT OVERWRITE DIRECTORY "/user/cloudera/datasets/Mobile_Analytics/unique-products-in-Brand" ROW FORMAT DELIMITED
 fields terminated by '#' stored as textfile
@@ -125,13 +120,11 @@ fields terminated by '#' stored as textfile
 select Brand_Name, Count(1) As Total_Sold_Mobiles from Mobile_tab3 group by Brand_Name order by Total_Sold_Mobiles desc limit 10;
 
 
-
-
-
-
-
-
-
-
-
-
+//To filter the null/ empty values from Datasets
+select Product_name,
+case when (coalesce(Product_name,"unknown")) = "unknown" then "unknown" else Product_name end as product,
+case when (coalesce(Brand_name,"unknown") or trim(Brand_name)="") then "unknown" else Brand_name end as brand,
+case when (coalesce(Price,0.0) or trim(Price)="" or trim(Price)="na") then 0.0 else Price end as price,
+case when (coalesce(Rating,0) or trim(Rating)="") then 0 else Rating end as rating1,
+reviews,case when coalesce(Reviews_Voting,0) or trim(Reviews_Voting)="" then 0 else Reviews_Voting end as review_vote 
+from Mobiles where (Reviews_Voting is null or Reviews_Voting="");
