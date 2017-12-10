@@ -1,0 +1,106 @@
+Flume SparkStreaming
+--------------------
+
+flume Conf file
+---------------
+
+# Name the components on this agent
+a1.sources = s1
+a1.sinks = hdpsk sparksk
+a1.channels = hdpmem sparkmem
+
+# Describe/configure the source
+a1.sources.s1.type = exec
+a1.sources.s1.command = tail -F /opt/gen_logs/logs/access.log
+
+#hdfs Sink
+a1.sinks.hdpsk.type = hdfs
+a1.sinks.hdpsk.hdfs.path = hdfs://quickstart.cloudera:8020/user/cloudera/flume_demo
+a1.sinks.hdpsk.hdfs.fileprefix = FlumeDemo
+a1.sinks.hdpsk.hdfs.filesuffix = .txt
+a1.sinks.hdpsk.hdfs.rollInterval = 120
+a1.sinks.hdpsk.hdfs.rollSize = 104850
+a1.sinks.hdpsk.hdfs.rollCount = 100
+a1.sinks.hdpsk.hdfs.fileType = DataStream
+
+# Describe the sink
+a1.sinks.sparksk.type = org.apache.spark.streaming.flume.sink.SparkSink
+a1.sinks.sparksk.hostname = quickstart.cloudera
+a1.sinks.sparksk.port = 8322
+
+# Use a channel which buffers events in memory
+a1.channels.hdpmem.type = memory
+a1.channels.hdpmem.capacity = 1000
+a1.channels.hdpmem.transactionCapacity = 100
+
+a1.channels.sparkmem.type = memory
+a1.channels.sparkmem.capacity = 1000
+a1.channels.sparkmem.transactionCapacity = 100
+
+# Bind the source and sink to the channel
+a1.sources.s1.channels = hdpmem sparkmem
+a1.sinks.sparksk.channel = sparkmem
+a1.sinks.hdpsk.channel = hdpmem
+
+
+
+Flume-Run Command
+******************
+flume-ng agent -n a1 conf-file /home/cloudera/Desktop/flume_conf.conf
+
+
+build.sbt
+**********
+
+libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.6.0"
+libraryDependencies += "org.apache.spark" % "spark-streaming_2.10" % "1.6.0"
+libraryDependencies += "org.apache.spark" % "spark-streaming-flume_2.10" % "1.6.0"
+libraryDependencies += "org.apache.spark" % "spark-streaming-flume-sink_2.10" % "1.6.0"
+libraryDependencies += "org.scala-lang" % "scala-library" % "2.10.5"
+libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.3.2"
+
+
+FlumeDeptCount
+---------------
+import org.apache.spark._
+import org.apache.spark.streaming._
+import org.apache.spark.streaming.flume._
+
+object FlumeDeptCount {
+  def main( args : Array[String]) {
+    val excutionMode=args(0)
+    val conf= new SparkConf().setAppName("FlumeStreamDepartmentCount").setMaster(excutionMode)
+    val ssc= new StreamingContext(conf, Seconds(20))
+    
+    val flumeStream = FlumeUtils.createPollingStream(ssc, args(1), args(2).toInt)
+
+    val lines = flumeStream.map(s=> new String(s.event.getBody.array()))
+    val depts_fltr=lines.filter(r=>{ val s=r.split(" ")(6)
+      s.split("/")(1) == "department"
+    })
+    val dept=depts_fltr.map( r=>{ val s=r.split(" ")(6)
+      (s.split("/")(2),1)
+       }).reduceByKey(_ + _)
+
+    dept.print()
+
+    ssc.start() //start Streaming
+    ssc.awaitTermination()
+  }
+}
+
+
+
+flume-ng agent -n a1 -f flume_conf.conf
+
+
+spark-submit
+*************
+
+spark-submit \
+--class FlumeDeptCount \
+--master yarn-client \
+--executor-memory 2gb \
+--jars "/usr/lib/flume-ng/lib/spark-streaming-flume-sink_2.10-1.6.0-cdh5.12.0.jar,/usr/lib/flume-ng/lib/spark-streaming-flume_2.10-1.6.0.jar,/usr/lib/flume-ng/lib/commons-lang3-3.3.2.jar,/usr/lib/flume-ng/lib/flume-ng-sdk-1.6.0-cdh5.12.0.jar" \
+flumestreaming_2.10-0.1.jar yarn-client quickstart.cloudera 8324
+
