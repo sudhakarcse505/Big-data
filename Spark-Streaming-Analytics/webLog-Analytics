@@ -1,0 +1,46 @@
+StreamingDepartmentCount-Anaytics
+*********************************
+build.sbt
+---------
+libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.6.0"
+libraryDependencies += "org.apache.spark" % "spark-streaming_2.10" % "1.6.0"
+
+Code:
+-----
+import org.apache.spark._
+import org.apache.spark.streaming._
+
+object StreamingDepartmentCount {
+  def main( args : Array[String]) {
+    val excutionMode=args(0)
+    val conf= new SparkConf().setAppName("streamDepartmentCount-Analytics").setMaster(excutionMode)
+    val ssc= new StreamingContext(conf, Seconds(10))
+
+    val lines = ssc.socketTextStream(args(1), args(2).toInt)
+    val depts_fltr=lines.filter(r=>{ val s=r.split(" ")(6)
+      s.split("/")(1) == "department"
+    })
+    val dept=depts_fltr.map( r=>{ val s=r.split(" ")(6)
+      (s.split("/")(2),1)
+       }).reduceByKey(_ + _)
+
+    dept.print()
+
+    ssc.start() //start Streaming
+    ssc.awaitTermination()
+  }
+}
+
+
+sh /opt/gen_logs/stop_logs.sh //Stop the logs
+sh /opt/gen_logs/start_logs.sh //start the logs
+sh /opt/gen_logs/tail_logs.sh | nc -lk quickstart.cloudera 8111  //move the log to web service
+
+nc quickstart.cloudera 8111
+
+Spark-submit cmd to run on the cluster
+**************************************
+spark-submit \
+--class StreamingDepartmentCount \
+--master yarn-client \
+streamdepartmentcount_2.10-0.1.jar yarn-client quickstart.cloudera 8111 
