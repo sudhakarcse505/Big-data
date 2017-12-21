@@ -1,0 +1,37 @@
+//**********  Read and Write Cassandra Table as DataFrame *******************//
+val movies_df = csc.read
+                   .format("org.apache.spark.sql.cassandra")
+                   .options(Map("keyspace" -> "cassandra_spark", "table" -> "movie_by_actors" ))
+                   .load
+
+//Loading DataFrame by quering Cassandra Table
+val movies_df1 = csc.sql("SELECT * FROM cassandra_spark.movie_by_actors WHERE actor1='Anne Hathaway'")
+
+movies_df1.printSchema()
+movies_df1.schema()
+movies_df1.dtype()
+
+//set default Keyspace for tables creating as TempTables
+csc.setKeyspace("cassandra_spark")
+
+//Creating Temp table in spark for dataframe
+movies_df1.registerTempTable("Movies_by_hathway")
+
+//query the data From Temp table
+val result = csc.sql(" SELECT title as movie_name, release_year as year " +
+                     " FROM Movies_by_hathway " +
+                     " WHERE release_year BETWEEN 2010 AND 2016 ")
+
+//to view the results
+result.count
+result.show()
+
+//create table in casandra to store this result
+CREATE TABLE cassandra_spark.Hathway_Movies_2010_2016(movie_name text, year Int, PRIMARY KEY(movie_name,year));
+
+
+//Store Back the Results to Cassandra table.
+result.write
+      .format("org.apache.spark.sql.cassandra")
+      .options(Map("keyspace" -> "cassandra_spark", "table" -> "hathway_movies_2010_2016" ))
+      .save
