@@ -1,0 +1,120 @@
+//*Cassandra-Spark-Integration******//
+//*cassandra version -Cassandra 2.1 *//
+//*Spark- version -1.4.1           *//
+//*260MB file with 2803436 rows    *//
+//**********************************//
+
+//Launch the Cqlsh 
+
+//Create keyspace
+CREATE KEYSPACE cassandra_spark WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'};
+
+//create table in cqlsh to match with file columns
+CREATE TABLE cassandra_spark.movie_by_actors (
+    actor1 text,
+    actor2 text,
+    video_id timeuuid,
+    release_year int,
+    title text,
+    PRIMARY KEY (actor1, actor2, video_id)
+) WITH CLUSTERING ORDER BY (actor2 ASC, video_id ASC);
+
+//load the file records in to table
+
+USE cassandra_spark;
+
+COPY movie_by_actors FROM '/root/data/movie_by_actors.csv'; 
+
+//check the count of the table
+SELECT COUNT(*) FROM cassandra_spark.movie_by_actors;
+
+//Launch the Spark-shell
+//Read the data from cassandra table as RDD
+
+val cassandra_rdd=sc.cassandraTable("cassandra_spark","movie_by_actors").
+                     select("actor1","actor2","release_year").
+                     as((actor1: String, actor2: String, year: Int) =>(actor1,actor2,year))
+		     
+cassandra_rdd.count
+cassandra_rdd.take(10).foreach(println)
+cassandra_rdd.filter(r=>r._1 =="Jamey Sheridan").collect.foreach(println)
+
+//storing to a csv file with tab delimiter
+cassandra_rdd.filter(r=>r._1 =="Jamey Sheridan")
+             .map(r=>r._1 + "\t" +r._2+ "\t" +r._3)
+             .saveAsTextFile("Jammy_Sheridan_movies")
+
+cassandra_rdd.cache()
+
+//Find the actor who acts many movies in the dataset
+cassandra_rdd.map(r =>(r._1,1))
+             .reduceByKey((a, c) =>(a + c))
+             .sortBy(r=>r._2,false)
+             .take(10).foreach(println)
+
+cassandra_rdd.map(r =>(r._1,1))
+             .reduceByKey((a, c) =>(a + c))
+             .sortBy(r=>r._2,false)
+             .count
+
+//store all the actors in cassandra table 
+case class actors(actor_name :String, movies_count:Int)
+cassandra_rdd.map(r =>(r._1,1))
+             .reduceByKey((a, c) =>(a + c))
+             .sortBy(r=>r._2,false).map(r=>actors(r._1,r._2))
+             .saveAsCassandraTable("cassandra_spark","actors_movie_count1",SomeColumns("actor_name","movies_count"))
+
+
+//find the actors who acted more multi-star movies in a year
+val multistar=cassandra_rdd.map(r =>((r._1,r._3),1))
+                           .reduceByKey(_ + _).map(r=>((r._1._2,r._2),r._1._1))
+                           .sortByKey(false)
+                           .map{case((a,b),c) =>(a,(c,b))}
+multistar.count
+multistar.take(10).foreach(println)
+
+val multistar1=multistar.foldByKey(("",0)) {
+                            case ((maxT,maxL),(t,l)) => if (maxL < l) (t,l) else (maxT,maxL) 
+                           }.sortByKey(false)
+
+multistar1.collect.foreach(println)
+multistar1.count
+
+//create the table in the cassandra to store multistar movies every year
+CREATE TABLE cassandra_spark.multistar_by_year(
+ year int,
+ actor_name text,
+ movies_count int,
+ PRIMARY KEY(actor_name,year)
+) WITH CLUSTERING ORDER BY (year DESC);
+
+//saving data to cassandra table using spark
+multistar1.map{case(a,(b,c)) =>(a,b,c)}
+          .saveToCassandra("cassandra_spark","multistar_by_year",SomeColumns("year","actor_name","movies_count"))
+
+
+
+case class movies(release_year :Int, actor1: String, actor2: String, title:String)
+
+val movies_rdd=sc.cassandraTable[movies]("cassandra_spark","movie_by_actors")
+                 .where("actor1='Anne Hathaway'")
+                 .select("release_year","actor1", "actor2","title")
+                 .cache()
+
+movies_rdd.count
+movies_rdd.take(10).foreach(println)
+
+import com.datastax.spark.connector.cql._;
+import com.datastax.spark.connector.types._;
+
+//define the table defination
+val tableDef=TableDef("cassandra_spark","Hathway_movies1",
+                         Seq(new ColumnDef("release_year", PartitionKeyColumn, IntType)),
+                         Seq(new ColumnDef("title", ClusteringColumn(0), TextType)),
+                         Seq(new ColumnDef("actor1", RegularColumn, TextType),
+                             new ColumnDef("actor2", RegularColumn, TextType))
+)
+
+//storing the data into table
+movies_rdd.map(r=>movies(r.release_year,r.title, r.actor1,r.actor2))
+          .saveAsCassandraTableEx(tableDef)
