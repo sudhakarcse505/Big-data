@@ -1,0 +1,148 @@
+//Spark-Scala code to run the Hql file having multiple queries delimited by semicolon(;) code using Spark-Loops.
+----------------------------------------------------------------------------------------------------------------- 
+hc=new org.apache.spark.sql.hive.HiveContext(sc);
+val rdd=sc.textFile("file:///home/cloudera/orders_spk_load1.hql")
+val rdd1=rdd.collect
+rdd1.map(r=>{val d=r.split(";")
+var i=0; val a=d.length; var s=""
+while (i<a) {
+ s=d(i).toString
+ println(s)
+ hc.sql(s)
+ i +=1 
+ }
+})
+
+read hql file from scala which has only one query.
+-------------------------------------------------
+
+val source = scala.io.Source.fromFile("orders_spk_load.hql").getLines
+val lines = try source.mkString finally source.close()
+
+val lines=sc.textFile("file:///home/cloudera/orders.hql").mkString
+val rdd=lines.collect
+
+
+
+
+
+
+scala Code Loop through DataFrame:
+----------------------------
+hc=new org.apache.spark.sql.hive.HiveContext(sc)
+val s="select row_number() over() as seq,prcs_mnth,domain_nm,t_table,file_id from treodq.T_FILE_CNTRL"
+val df=hc.sql(s).cache
+val len=df.count
+var i=1;
+while (i < len) {
+val df1=df.filter(col("seq") === i)
+val data=df1.select("*").collectAsList()
+val table_row=data.toString.trim.substring(2,(data.toString.length)-2)
+val table_row1=table_row.split(",")
+val file_domain=table_row1(2)
+val t_table=table_row1(3)
+val file_id=table_row1(4)
+val inputpath="file:///home/cloudera/treodq/hive/"
+val script_nm="Load_" + t_table + ".hql"
+val sql_file=sc.textFile(inputpath + script_nm).collect.mkString(" ")
+sql_file.foreach(print)
+i = i+1 
+}
+
+
+Create a jar-file Code which can take the domain name as i/p and load the T_* table
+-----------------------------------------------------------------------------------
+import org.apache.spark.{sparkConf,SparkContext}
+import org.apache.spark.sql._
+import org.apache.spark.sql.hive.HiveContext
+
+Object T_Table {
+ def main(args : Array[String]) {
+   val conf= new SparkConf().setAppName("T-table-load").setMaster(local[2])
+   val sc= new SparkContext(conf)
+   val domain="Member"     //args(0)
+   val hc= new org.apache.spark.sql.hive.HiveContext(sc)
+   val df=hc.sql(s"""select t_table,file_id from treodq.T_FILE_CNTRL where domain_nm='$domain'""") 
+   //method to replace value during runtime 
+   
+   val params=df.collectAsList().toString().substring(2,(df.collectAsList().toString.length)-2).split(",") //logic to read values from cols
+   val script="Load_"+params(0)+".hql"
+   val src_script=sc.textFile("file:///home/cloudera/treodq/hive/" + script).collect.mkString(" ") 
+   //mkString() to read file as String, default takes \n as delimiter and replce with nothing 
+   val srcfile_id="$file_id"
+   val param_fileid=params(1)
+   val src_script1=src_script.replace(srcfile_id,param_fileid) //replce parameter to value
+   hc.sql("set hive.exec.dynamic.partition.mode=nonstrict")
+   hc.sql(src_script1)
+}
+
+NOTE: HiveContext/SqlContext can able to execute only one query in a call, if it reads ';'(semicolon), it will fail.
+
+
+spark code which can take the domain_name as input and pick all the Rules from R_RULE_MASTER & execute all rules using a loop
+------------------------------------------------------------------------------------------------------------------------------
+val domain="Member" //args(0)
+val hc=new org.apache.spark.sql.hive.HiveContext(sc)
+val rules_df=hc.sql(s"""select rule_id,sql_stmt,sql_count from treodq.R_RULE_MASTER where domain_nm='$domain'""")
+
+val tot=rules_df.count
+var i=1;
+while (i<=tot){
+val rule_exe=rules_df.filter(col("rule_id") === i).select("*").collectAsList()
+val rule_exe1=rule_exe.toString().substring(2,(rule_exe.toString.length)-2).split(",")
+val sql_stmt=rule_exe1(1)
+val count_sql=rule_exe1(2)
+sql_stmt.foreach(print)
+count_sql.foreach(print)
+i = i +1
+}
+
+//read current run associated all domains with values
+val run="select row_number() over() as seq,run_id,domain_nm,file_ids from ( select run_id,domain_nm,collect_set(file_id) as file_ids,row_number() over(partition by domain_nm order by run_id desc) as rnk from treodq.r_run_log group by run_id,domain_nm ) A where rnk=1 "
+val fileid_df=hc.sql(run).cache
+
+var j=2;
+val l=fileid_df.count
+while (j <= l) {
+val file_id=fileid_df.filter(col("seq") === j).select("*").collectAsList()
+val file_id1=file_id.toString().substring(2,(file_id.toString.length)-2).split(",")
+val runid=file_id1(1)
+val domain=file_id1(2)
+val o_file_id=file_id1(3).substring(13,(file_id1(3).length)-1)
+o_file_id.foreach(print)
+j = j +1
+}
+
+reading csv file as data frame:
+-------------------------------
+spark-shell --packages com.databricks:spark-csv_2.11:1.5.0
+
+val df = sqlContext.read.format("com.databricks.spark.csv").option("header", "true") .option("mode", "DROPMALFORMED").load("file:///home/cloudera/Desktop/CDC_data.txt"); 
+
+
+case class CDC (Year:String, LocationAbbr:String, LocationDesc:String, Class1:String, Topic:String, 
+Question:String, DataSource:String, Response:String, Data_Value_Unit:String, Data_Value_Type:String,
+Data_Value:String, Data_Value_Footnote_Symbol:String, Data_Value_Footnote:String, Data_Value_Std_Err:String, 
+Low_Confidence_Limit:String, High_Confidence_Limit:String, Sample_Size:String, Break_Out:String, Break_Out_Category:String, Geolocation:String, ClassId:String, TopicId:String),
+ QuestionId:String 
+LocationId:String, BreakOutId:String, BreakOutCategoryid:String, ResponseId:String)
+
+class CDC1 (Year:String, LocationAbbr:String, LocationDesc:String, Class1:String, Topic:String, 
+Question:String, DataSource:String, Response:String, Data_Value_Unit:String, Data_Value_Type:String,
+Data_Value:String, Data_Value_Footnote_Symbol:String, Data_Value_Footnote:String, Data_Value_Std_Err:String, 
+Low_Confidence_Limit:String, High_Confidence_Limit:String, Sample_Size:String, Break_Out:String, Break_Out_Category:String, Geolocation:String, ClassId:String, TopicId:String,QuestionId:String,LocationId:String, BreakOutId:String, BreakOutCategoryid:String, ResponseId:String)
+
+
+//Creating data frame for columns more than 22
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.types.{StructType,StructField,StringType};
+
+val CDC_rdd=sc.textFile("CDC_data_pipe")
+
+val schemaString = "Year@@LocationAbbr@@LocationDesc@@Class1@@Topic@Question@@DataSource@@Response@@Data_Value_Unit@@Data_Value_Type@@Data_Value@@Data_Value_Footnote_Symbol@@Data_Value_Footnote@@Data_Value_Std_Err@@Low_Confidence_Limit@@High_Confidence_Limit@@Sample_Size@@Break_Out@@Break_Out_Category@@Geolocation@@ClassId@@TopicId@@QuestionId@@LocationId@@BreakOutId@@BreakOutCategoryid@@ResponseId";
+
+val schema =StructType(schemaString.split("@@").map(fieldName => StructField(fieldName, StringType, true)))
+
+val rowRDD = CDC_rdd.map(r=>(r.split("\\|"))).map(r => Row(r(0).trim, r(1).trim,r(2).trim, r(3).trim,r(4).trim, r(5).trim,r(6).trim, r(7).trim,r(8).trim, r(9).trim,r(10).trim, r(11).trim,r(12).trim, r(13).trim,r(14).trim, r(15).trim,r(16).trim, r(17).trim,r(18).trim, r(19).trim,r(20).trim, r(21).trim,r(22).trim, r(23).trim,r(24).trim, r(25).trim,r(26).trim))
+
+val CDC_df = sqlContext.createDataFrame(rowRDD, schema)
