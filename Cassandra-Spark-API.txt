@@ -1,0 +1,430 @@
+Important Points to Note:
+*************************
+-->Primay Key columns should able to identify the unique columns in the table
+-->Partition key column can use for partition the data and clustering cloumns can use to store the records in sorting order
+   and can enforces the uniqueness to the row.
+-->if we insert any no.of rows to a table with same partitioning-key value without defining clustering columns on table,it will keep update the same rows.
+-->Update query will work if it finds the matched column in the table else it can insert the row.
+-->if we define multiple col in PK combination first column takes as partition and remainig columns uses as clustring cloumns.
+-->Not possible to alter the Primary Key of a table
+-->Not possible to rename a non-primary key attributes.
+
+
+
+Reading & Writing API's:
+************************
+get[Type] --> grab the value from cassandra and move to spark
+getOption[Type] -->grab the value if exists else allows to define the value.
+cassandraTable() - can help to read the content from cassandra tables
+saveToCassandra() - can insert the row into the cassandra Existing table.
+saveAsCassandraTable() - can create the table using "somecolumns()" parameter, uses the first column name as partition/PK column.
+saveAsCassandraTableEx() - allows you to define the table of your choice in spark level. 
+
+
+val cas1=sc.cassandraTable("killr_video","videos_by_year_title").select("title","added_year","avg_rating")
+.where(r=>(r.getInt("added_year") == 2015))
+
+cas1.map(r=>(r.getString("title"),r.getInt("added_year"),r.getFloat("avg_rating")))
+
+val cas2=sc.cassandraTable("killr_video","videos_by_year_title").where("added_year=2015").select("title","added_year","avg_rating").withDescOrder
+
+val c=sc.cassandraTable[(String,Int,Option[Float])]("killr_video","videos_by_year_title").where("added_year=2014").select("title","added_year","avg_rating")
+
+using As() function
+-------------------
+val c1=sc.cassandraTable("killr_video","videos_by_year_title").where("added_year=2014").select("title","added_year","avg_rating").as((a:String, b:Int, c:Option[Float]) =>(a,b,c))
+
+c1.map(r=>(r._1,r._2,r._3.getOrElse(0.0))).take(10).foreach(println)
+
+Excercise
+---------
+1. Pull all of the movies from the videos table in the Animation genre and from the year 2014, and then have it display
+
+val ex=sc.cassandraTable("killr_video","videos").select("title","genres","release_year").filter(r=>(r.getInt("release_year") ==2014))
+val ex1=ex.filter(r=>(r.getList[String]("genres").contains("Animation"))).map(r=>(r.getString("title"),r.getInt("release_year")))
+
+2. Using the mpaa_rating from the videos table, find the percentage of movies that are rated G, PG, PG-13, R, and NR
+
+val ex2=sc.cassandraTable("killr_video","videos").select("mpaa_rating")
+val tot=ex2.count
+val g=(ex2.filter(r=>(r.getString("mpaa_rating") == "G")).count
+
+Excercise (Converting cassandra rows to tuple or objects)
+---------------------------------------------------------
+
+case class Video( added_year : Int, title : String, description : String ) 
+val rows = sc.cassandraTable[Video]("killr_video", "videos_by_year_title").select("added_year","title","description") //below also the same
+
+val rows1 = sc.cassandraTable("killr_video", "videos_by_year_title").select("added_year","title","description").as((year:Int,title:String, des:String) =>(year, title, des))
+
+val rows2 = sc.cassandraTable[(Int, String, String)]("killr_video", "videos_by_year_title").select("added_year","title","description").where("added_year=2014")
+
+val filter = rows.filter(movie => movie.description.toLowerCase.contains("dog"))
+val output = filter.map( movie => "Title: " + String.format("%1$-26s", movie.title) + "\n" +
+                                  "Description: " + movie.description + "\n")
+output.collect.foreach(println)
+
+
+
+save data to cassandra
+----------------------
+case class movie(year :Int, movie_name:String)
+rows2.map(r=>(r._1,r._2)).saveAsCassandraTable("killr_video","first_table",SomeColumns("_1","_2"))
+
+
+case class Video( added_year : Int,
+                  title : String, 
+                  video_id : java.util.UUID, 
+                  added_date : java.util.Date,
+                  avg_rating : Option[Float], 
+                  description : Option[String], 
+                  user_id : java.util.UUID ) 
+
+val videos = sc.cassandraTable("killr_video", "videos_by_year_title").as(Video).where("added_year = 2014")
+
+val filterRating = videos.filter( video => if (video.avg_rating.isEmpty) false else video.avg_rating.get <= 4 )
+
+filterRating.saveAsCassandraTable("killr_video", "worst_2014_videos", SomeColumns("added_year","title","video_id",
+                                                                                  "added_date","avg_rating",
+                                                                                  "description","user_id"))
+
+
+CREATE TABLE killr_video.first_table3 (year int, actor text, primary key(year)); 
+
+rows2.map(r=>(r._1,r._2)).as((year : Int, actor :String) => (year, actor)).saveToCassandra("killr_video","first_table2",SomeColumns("year","actor"))
+
+//saving to cassnadra using saveToCassandra API
+CREATE TABLE killr_video.video_save (
+    video_id timeuuid PRIMARY KEY,
+    avg_rating float,
+    description text,
+    genres set<text>,
+    mpaa_rating text,
+    release_year int,
+    title text
+)
+
+val cast=sc.cassandraTable("killr_video","videos").select("video_id","avg_rating","mpaa_rating").where("video_id=ece8de8f-a5e2-11e5-ba92-a45e60eb67c5")
+cast.saveToCassandra("killr_video","video_save",SomeColumns("video_id","avg_rating","mpaa_rating"))
+
+//cassandra PPT save
+CREATE TYPE det(
+country Text,
+language Text,
+runtime Int);
+
+CREATE TABLE Killr_video.favorite_movies(
+ title Text ,
+ year Int,
+ actor_name Text,
+ rating Float,
+ genres set<Text>,
+ details frozen<det>,
+ PRIMARY KEY(title,year));
+ 
+val movie = sc.cassandraTable("killr_video","videos_by_actor").where("actor_name = 'Johnny Depp'").select("title","release_year","actor_name")
+
+movie.as((title :String, year :Int, actor_name: String) => (title, year, actor_name)).saveToCassandra("killr_video","favorite_movies",SomeColumns("title","year","actor_name"))
+
+val details = sc.parallelize(Seq(("Alice in Wonderland",2010,UDTValue.fromMap(Map("country"->"USA","language"->"English","runtime"->108)))))
+details.saveToCassandra("killr_video","favorite_movies",SomeColumns("title","year","actor_name"))
+
+//saev Using saveAsCassandraTable() API
+
+case class tags(tag :String, title :String, avg_rating:Float, mpaa_rating:String, release_year:Int)
+val tag=sc.cassandraTable[tags]("killr_video","videos_by_tag").select("tag","title","avg_rating","mpaa_rating","release_year").where("tag='dance'")
+tag.saveAsCassandraTable("results","dance_tags",SomeColumns("title","tag","avg_rating","mpaa_rating","release_year"))
+
+Note :Even if change the order of the columns it will create the table as per case class.
+
+CREATE TABLE results.dance_tags1 (
+    title text,
+    avg_rating float,
+    mpaa_rating text,
+    release_year int,
+    tag text,
+    PRIMARY KEY((title),release_year)
+) WITH CLUSTERING ORDER BY (release_year DESC)
+
+tag.saveToCassandra("results","dance_tags1",SomeColumns("title","release_year","avg_rating","mpaa_rating","tag"))
+
+//Using saveAsCassandraTableEx() API
+************************************
+import com.datastax.spark.connector.cql._;
+import com.datastax.spark.connector.types._;
+
+case class reorderedVideo( title : String,
+                           added_year : Int, 
+                           added_date : java.util.Date, 
+                           avg_rating : Option[Float], 
+                           description : Option[String], 
+                           user_id : java.util.UUID, 
+                           video_id : java.util.UUID )
+
+val tableDef = TableDef( "killr_video", "worst_2014_videos_ex",
+                         Seq(new ColumnDef("title", PartitionKeyColumn, TextType)),
+                         Seq(new ColumnDef("added_year", ClusteringColumn(0), IntType)),
+                         Seq(new ColumnDef("added_date", RegularColumn, TimestampType),
+                             new ColumnDef("avg_rating", RegularColumn, FloatType),
+                             new ColumnDef("description", RegularColumn, TextType),
+                             new ColumnDef("user_id", RegularColumn, UUIDType),
+                             new ColumnDef("video_id", RegularColumn, UUIDType))                    
+)
+
+val mappedColumns = filterRating.map(m => reorderedVideo(m.title, m.added_year, m.added_date, m.avg_rating, 
+                                                        m.description, m.user_id, m.video_id))
+
+mappedColumns.saveAsCassandraTableEx(tableDef)
+
+
+//KeyBy()
+val m = sc.cassandraTable("killr_video","videos_by_tag").select("tag","title","release_year").where("tag='dance'")
+val m1=m.keyBy(row => (row.getString("title"), row.getInt("release_year")))
+
+//keys() & values()
+m1.keys
+m1.values
+
+//mapValues
+val cast=sc.cassandraTable[(String,Int)]("killr_video","videos_by_tag").
+select("title","release_year").where("tag='dance'").mapValues(r=>(r.getString("title"))).lookup(2007)
+
+//foldByKey(z)(f) -->similar like reduceByKey() but allows to give Inital values
+***************
+val t=sc.cassandraTable("killr_video","videos_by_tag").select("title","release_year").where("tag='dance'")
+val t1=t.as((t: String, y:Int) =>(t,y)).keys.map(r=>(r,r.length))
+val t2=t.as((t: String, y:Int) =>(t,y))
+val t3=t1.join(t2).map(r=>(r._2._2,(r._1,r._2._1)))
+t3.foldByKey(("",0)) {case ((maxT,maxL),(t,l)) => if (maxL < l) (t,l) else (maxT,maxL) }.collect.foreach(println)
+//can give you the in the same key max length of title
+
+val maxT="";
+val maxL=0;
+t3.reduceByKey{case ((maxT,maxL),(t,l)) => if (maxL < l) (t,l) else (maxT,maxL) }.collect.foreach(println)
+//give you the same Output as above
+
+//CountByKey()
+t3.countByKey().foreach(println)
+
+//CombineByKey()
+t3.map(r=>(r._1,r._2._2)).combineByKey((r:Int) => (r, 1),
+   (res:(Int,Int), r:Int) => (res._1 + r, res._2 + 1),
+   (res1:(Int,Int), res2:(Int, Int)) => (res1._1 + res1._1, res2._2 + res2._2)
+).collect.foreach(println)
+
+
+//diffrent types of Joins
+val t2=t.as((t: String, y:Int) =>(t,y)).filter{case(t,y) =>y._2 !=2004}
+val lj=t1.leftOuterJoin(t2).filter{case(a,(x,y)) => y.isDefined}
+lj.map(r=>(r._1,r._2._1,r._2._2.getOrElse(0))).collect.foreach(println)
+
+
+
+DataFrame Reader
+****************
+CREATE KEYSPACE temp_tbls WITH replication = {'class':'SimpleStrategy', 'replication_factor':0};
+
+val df = csc.read.format("org.apache.spark.sql.cassandra").options(Map( "keyspace" -> "killr_video", "table" -> "videos" )).load
+
+
+val df = csc.sql("SELECT * FROM killr_video.videos")
+df.printSchema()
+csc.setKeyspace("killr_video")
+
+val df = csc.sql(" SELECT title, release_year " +
+                 " FROM killr_video.videos " +
+                 " WHERE title = 'Alice in Wonderland'")
+
+
+
+csc.setKeyspace("temp_tbls")
+t.registerTempTable("video_fil")
+val res=csc.sql("SELECT max(avg_rating) avgs,release_year from video_fil WHERE mpaa_rating='PG' GROUP BY release_year")
+val res=csc.sql("SELECT max(avg_rating) mx_avg,min(avg_rating) min_avg, mpaa_rating FROM video_fil " +
+                "WHERE release_year=2014 GROUP BY mpaa_rating order by mpaa_rating")  
+
+res.rdd.map(r=>(r(2).toString,r(0).toString.toFloat,r(1).toString.toFloat)).saveAsCassandraTable("results","video_rating_2014",SomeColumns("_1","_2","_3"))
+
+res.write.format("org.apache.spark.sql.cassandra").options(Map( "keyspace" -> "results","table" -> "video_rating_2014" )).save
+
+
+//*Cassandra-Spark-Integration******//
+//*cassandra version -Cassandra 2.1 *//
+//*Spark- version -1.4.1           *//
+//*260MB file with 2803436 rows    *//
+//**********************************//
+
+//Launch the Cqlsh 
+
+//Create keyspace
+CREATE KEYSPACE cassandra_spark WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'};
+
+//create table in cqlsh to match with file columns
+CREATE TABLE cassandra_spark.movie_by_actors (
+    actor1 text,
+    actor2 text,
+    video_id timeuuid,
+    release_year int,
+    title text,
+    PRIMARY KEY (actor1, actor2, video_id)
+) WITH CLUSTERING ORDER BY (actor2 ASC, video_id ASC);
+
+//load the file records in to table
+
+USE cassandra_spark;
+
+COPY movie_by_actors FROM '/root/data/movie_by_actors.csv'; 
+
+//check the count of the table
+SELECT COUNT(*) FROM cassandra_spark.movie_by_actors;
+
+//Launch the Spark-shell
+//Read the data from cassandra table as RDD
+
+val cassandra_rdd=sc.cassandraTable("cassandra_spark","movie_by_actors").
+                     select("actor1","actor2","release_year").
+                     as((actor1: String, actor2: String, year: Int) =>(actor1,actor2,year))
+		     
+cassandra_rdd.count
+cassandra_rdd.take(10).foreach(println)
+cassandra_rdd.filter(r=>r._1 =="Jamey Sheridan").collect.foreach(println)
+
+//storing to a csv file with tab delimiter
+cassandra_rdd.filter(r=>r._1 =="Jamey Sheridan")
+             .map(r=>r._1 + "\t" +r._2+ "\t" +r._3)
+             .saveAsTextFile("Jammy_Sheridan_movies")
+
+cassandra_rdd.cache()
+
+//Find the actor who acts many movies in the dataset
+cassandra_rdd.map(r =>(r._1,1))
+             .reduceByKey((a, c) =>(a + c))
+             .sortBy(r=>r._2,false)
+             .take(10).foreach(println)
+
+cassandra_rdd.map(r =>(r._1,1))
+             .reduceByKey((a, c) =>(a + c))
+             .sortBy(r=>r._2,false)
+             .count
+
+//store all the actors in cassandra table 
+case class actors(actor_name :String, movies_count:Int)
+cassandra_rdd.map(r =>(r._1,1))
+             .reduceByKey((a, c) =>(a + c))
+             .sortBy(r=>r._2,false).map(r=>actors(r._1,r._2))
+             .saveAsCassandraTable("cassandra_spark","actors_movie_count1",SomeColumns("actor_name","movies_count"))
+
+
+//find the actors who acted more multi-star movies in a year
+val multistar=cassandra_rdd.map(r =>((r._1,r._3),1))
+                           .reduceByKey(_ + _).map(r=>((r._1._2,r._2),r._1._1))
+                           .sortByKey(false)
+                           .map{case((a,b),c) =>(a,(c,b))}
+multistar.count
+multistar.take(10).foreach(println)
+
+val multistar1=multistar.foldByKey(("",0)) {
+                            case ((maxT,maxL),(t,l)) => if (maxL < l) (t,l) else (maxT,maxL) 
+                           }.sortByKey(false)
+
+multistar1.collect.foreach(println)
+multistar1.count
+
+//create the table in the cassandra to store multistar movies every year
+CREATE TABLE cassandra_spark.multistar_by_year(
+ year int,
+ actor_name text,
+ movies_count int,
+ PRIMARY KEY(actor_name,year)
+) WITH CLUSTERING ORDER BY (year DESC);
+
+//saving data to cassandra table using spark
+multistar1.map{case(a,(b,c)) =>(a,b,c)}
+          .saveToCassandra("cassandra_spark","multistar_by_year",SomeColumns("year","actor_name","movies_count"))
+
+
+
+case class movies(release_year :Int, actor1: String, actor2: String, title:String)
+
+val movies_rdd=sc.cassandraTable[movies]("cassandra_spark","movie_by_actors")
+                 .where("actor1='Anne Hathaway'")
+                 .select("release_year","actor1", "actor2","title")
+                 .cache()
+
+movies_rdd.count
+movies_rdd.take(10).foreach(println)
+
+import com.datastax.spark.connector.cql._;
+import com.datastax.spark.connector.types._;
+
+//define the table defination
+val tableDef=TableDef("cassandra_spark","Hathway_movies1",
+                         Seq(new ColumnDef("release_year", PartitionKeyColumn, IntType)),
+                         Seq(new ColumnDef("title", ClusteringColumn(0), TextType)),
+                         Seq(new ColumnDef("actor1", RegularColumn, TextType),
+                             new ColumnDef("actor2", RegularColumn, TextType))
+)
+
+//storing the data into table
+movies_rdd.map(r=>movies(r.release_year,r.title, r.actor1,r.actor2))
+          .saveAsCassandraTableEx(tableDef)
+
+
+//**********  Read and Write Cassandra Table as DataFrame *******************//
+val movies_df = csc.read
+                   .format("org.apache.spark.sql.cassandra")
+                   .options(Map("keyspace" -> "cassandra_spark", "table" -> "movie_by_actors" ))
+                   .load
+
+//Loading DataFrame by quering Cassandra Table
+val movies_df1 = csc.sql("SELECT * FROM cassandra_spark.movie_by_actors WHERE actor1='Anne Hathaway'")
+
+movies_df1.printSchema()
+movies_df1.schema()
+movies_df1.dtype()
+
+//set default Keyspace for tables creating as TempTables
+csc.setKeyspace("cassandra_spark")
+
+//Creating Temp table in spark for dataframe
+movies_df1.registerTempTable("Movies_by_hathway")
+
+//query the data From Temp table
+val result = csc.sql(" SELECT title as movie_name, release_year as year " +
+                     " FROM Movies_by_hathway " +
+                     " WHERE release_year BETWEEN 2010 AND 2016 ")
+
+//to view the results
+result.count
+result.show()
+
+//create table in casandra to store this result
+CREATE TABLE cassandra_spark.Hathway_Movies_2010_2016(movie_name text, year Int, PRIMARY KEY(movie_name,year));
+
+
+//Store Back the Results to Cassandra table.
+result.write
+      .format("org.apache.spark.sql.cassandra")
+      .options(Map("keyspace" -> "cassandra_spark", "table" -> "hathway_movies_2010_2016" ))
+      .save
+
+
+
+//spark-Streaming
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.SparkContext._
+import org.apache.spark.streaming._
+import org.apache.spark.streaming.StreamingContext._
+import com.datastax.spark.connector._
+import com.datastax.spark.connector.streaming._
+
+val conf = new SparkConf(true).setAppName("Streaming Example").setMaster("spark://127.0.0.1:7077")
+
+val ssc = new StreamingContext(conf, Seconds(10))
+
+val stream = ssc.socketTextStream("127.0.0.1", 9999)
+
+stream.flatMap(record => record.split(" ")).map(word => (word,1)).reduceByKey(_ + _).print()
+
+ssc.start()
+ssc.awaitTermination()
