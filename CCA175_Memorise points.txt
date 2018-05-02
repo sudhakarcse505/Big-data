@@ -1,0 +1,678 @@
+Import classes:
+----------------
+Import org.apache.spark.sql.hive._ (for hiveContext in spark)
+Import org.apache.spark.sql.cassandra._ (for CassandraContext in spark)
+Import org.apache.spark.sql.functions._
+Import com.databricks.spark.avro._  (for avro files)
+Import org.apache.hadoop.fs._
+Import SqlContext.implicits._
+
+
+Note: in Sqoop Gzip/deflate both are same.
+      avro support deflate nothing but gzip
+
+Compresssions in SparkContext:
+Text/SequenceFile:
+org.apache.hadoop.io.compress.Bzip2Codec/GzipCodec/SnappyCodec
+
+
+
+
+OtherFiles:
+SqlContext.setConf("spark.sql.shuffle.partitions","2") //to reduce the 200 tasks to less can increse the performance
+SqlContext.setConf("spark.sql.parquet.compression.codec","gzip/snappy/lzo")
+SqlContext.setConf("spark.sql.avro.compression.codec","gzip/snappy/lzo")
+SqlContext.setConf("spark.sql.orc.compression.codec","gzip/snappy/lzo")
+SqlContext.setConf("spark.sql.json.compression.codec","gzip/snappy/lzo")
+
+
+Hive variables:
+---------------
+set hive.exec.compress.output=true;
+set mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.Bzip2Codec/GzipCodec/SnappyCodec;
+set hive.exec.dynamic.partition=true;
+set hive.exec.dynamic.partition.mode=nonstrict;
+set io.compression.codec; --gives all the available/supported compressions in hive
+
+Shuffling & Combiner:
+---------------------
+Process of grouping and partitioning is called shuffling
+process of computing intermediate results by mapper is called combining.
+In case of Spark – reduceByKey and aggregateByKey are used for aggregations. Both of them use combiner.
+
+
+Points should Note:
+*******************
+
+HDFS :
+------
+1.hdfs cmd to delete the specific folder with have some folder  & files in it.
+hadoop fs -rm -R /user/cloudera/hdpcp/total_orders/ --> delete the folder total_orders
+
+2.to see the files in inner folder of a folder.
+hadoop fs -ls -R /user/cloudera/hdpcp/  ---> will list the all the files in with path in the folder.
+ 
+CopyFromLocal -can copy the files from local file to hdfs.
+put- can copy the files from local file system and standard input.
+
+Files In Hadoop:
+****************
+textfile -> Normal csv file format.
+sequenceFiles-> stores data as K,V pair in binary format. easy to write,Support block level compression.but difficulr to read data.
+ORC Files-> Optimised RowColumnar files, can store the data in relational way, good for quering and storing, support update/deletes.
+AvroFiles-> stores the data along with the metadata. can provide flexibility to add,delete columns.suppport block level compression.
+parquetFiles-> stores the data as columnar storage.efficeinet way to query, new cols can added at end of the stucture.slower to write.
+
+Sqoop-Import:
+------------
+1.target-dir can create a new specified directory before it loads the data to files & cannot create a subfolder with tablename.
+2.wearehouse-dir can create a sub folder with tablename and loads data to it.
+3.default import is in text file with csv format.
+4.default compressions is gzip(deflate) can take if we specify (-z/--compress) property.
+5.double quotes delimiters use --fields-terminated-by '\"'
+6.Single quotes delimiters use --fields-terminated-by '\\''
+7.cat to read the avro file and head -5 to disply the top 5 lines (usually schema will print)
+8."avro-tools" cmd from local machine to get different options to work with avro data files.
+9."avro-tools getschema <file.avro>" to get the schema of avro file.
+10.during import-all-tables should give "warehouse-dir",error is not meaningfull if we give "target-dir".
+11.if the table doesn't has the primary key, use -m 1 or --split-by <uniq-col> to import successfully. 
+12.If we add the columns(extra columns) in incremental load, it can load without any issues.
+13.sqoop merge can work only if the src and tgt files are in same format, no.of cols Should same.
+14.if we use the --query , should use this in query end "where \$CONDITIONS". because if we use --query , it will add "END" at the end of query and pass
+  the query to db, so it can fail, to avoid it use CONDITIONS which has always true condition 1=1 
+
+15.Can import in 2 phases. at 1st phase it reads the metadata from RDBMS and establish the number of parllel mappings to HDFS.
+   in Phase-2 run the Boundry query on table based on primary key and evenly distribute the rows to all mappers.
+
+16.If sqoop fails during the import/Export , it can end up with partial load.Staging-table is the option for export to avoid
+   partial commit to RDBMS database.
+17.sqoop import can create the hive partition table and load data to partition.Partition value must be string. 
+18.It is not possible to get the exact row which causes failure of sqoop job even from log, as developer can write a code to 
+   handle this errors
+19.sqoop incremental import can have 2 option to take the data from source table.
+    incremental "append/lastmodified"
+    check-cloumn "pk columns"
+    last-value   "<last value from tgt fail>"
+  
+ Append:- can take source rows whose check-column values will be highest than last value.
+    append is equal to->  select * from source where check-column > "last-value"
+
+ lastmodified:- can take the new/updated rows from source table nbased on last-value of the check-column. check column shuld
+                be the timestamp column & last-value can be timestamp value.
+     equal to -> select * from source where check-column > 'timestamp';
+
+different delimiters:
+--fields-terminated-by 'X' (character delimited)
+--fields-terminated-by '\b' (backspace)
+--fields-terminated-by '"' (double quote)
+--fields-terminated-by "'" (single quote)
+--fields-terminated-by '\\' (backslash)
+--fields-terminated-by '|' (pipe)
+--fields-terminated-by '\t' (tab delimited)
+--fields-terminated-by '*' (star delimited)
+--fields-terminated-by '~' (tild)
+--fields-terminated-by ':' (colon)
+--fields-terminated-by '\001' (hive default delimiter)
+
+different file types:
+--as-textfile
+--as-sequencefile
+--as-avrodatafile
+--as-parquetfile
+
+compression techniques:
+--compression-codec "gzip/bzip2/snappy"
+
+Note: during import to hive table, we can specify the delimiter type,file type & the compression type also.
+----
+
+Steps for sqop merge:
+---------------------
+1.first load the old data to one hdfs.
+2.load the latest data to another file in hdfs.
+3.sqoop merge need jar-file that can be get from last executed sqoop imoprt cmd.(from step2)
+4.copy the full path with jar file name of last executed sqoop import cmd.
+5.syntax for sqoop merge below.
+sqoop merge --new-data "path" \
+--onto "old_data_path" \
+--target-dir "new path for result" \
+--class-name "<lst execurted tablename>" \
+--jar-file "<from step4>"
+
+Sqoop export:
+-------------
+1.Need to use --connect , --export-dir, --table parameters to run the export.
+2.can export the zipped files also to Mysql
+3.careful with datatypes & lengths, target table has length more than the src col lengths.
+4.Mysql table should have PK defined on column to work with incremenatal updates or else it will insert the duplicates
+5.default --update-mode is "updateonly".
+5.if src & tgt columns order is not same then use --columns "<col1,col2,..>" respect to src col orders but cols names
+  should be same as tgt table.
+6.if we want to load only two cols to tgt but src can have 3 cols , then we should give the --columns.
+7**."input-null-string/input-null-non-string" could represent the source data nulls, this is to identify the nulls
+   from source
+8.can export the JSON & Avro data files with compressions, since it can store the data with the structure of the data
+ like data type of column, length,, etc  
+
+9. with "Update-key" need to specify the unique/PK, If you won't tell the key , it will create duplicates in tables.
+10.two types of updates-modes i)allowinsert --> insert/update 
+                             ii)updateonly  --> upateonly
+
+11.Even if table doesn't have the PK, sqoop export can work but creates the duplicates.
+12.during export fails, sqoop export can retry 4 times before popup the error.
+13.staging-table option could helpful to avoid partial database commits due to export failures.
+14.Export can commit for every 10,000 rows.
+15.an export is not an atomic process. Partial results from the export will become visible before the export is complete
+16.If a task fails, the current transaction will be rolled back. Any previously-committed transactions will remain durable 
+   in the database, leading to a partially-complete export.
+17.staging table is not support if we use --direct or --update-key "".
+
+Sqoop Jobs:
+-----------
+1.check the sqoop job creating syntax.
+sqoop job --create <job_name> \
+--<space> <export/import> \
+--general and tool args
+
+Spark-Architecture:
+******************
+Distributed computation engine designed for big data and in-memory processing
+>Interactive and batch analytics
+>Up to 100x faster than Hadoop
+>5-10x less code than Hadoop
+>Efficiency and scalability
+>Fault-tolerance
+
+Spark web UI URL's:
+i)Master Web UI : http://<master-host>:7080
+ii)Application Web UI: http://<driver-host>:4040
+Note:If more than one application is running, the Web UI ports are assigned as 4040, 4041, and so forth.
+
+
+Spark-RDD's:
+------------
+dataset-contains the primitive values,records,tuples & class objects
+dataFrame-collection of data organized into named columns.
+1.get complete knowledge on Retail data model with cloumns & data type
+2.try to remember the braces and syntax of all reduceByKey(),aggregateByKey(),combineByKey().
+3.think solution in Data Frame sql's.
+4.first apply the filter then select the required columns while woring with text/Sequence Files.
+5.aggregate operations can done by aggeregateByKey() but we need to do two operations at a minimum.
+can ignore the unnesasary one after that.
+6.Below syntax can convert the tuple into string.
+map(r=>r.productIterator.mkString(","))
+
+**7.need to import the below package beore working with sequencefiles
+ import org.apache.hadoop.io._
+RDD.saveAsSequenceFile("<path/file>", Some(classOf[BZip2Codec])) ===B & Z are capital letters
+
+reading sequce Files
+---------------------
+sc.sequenceFil("",classOf[""],classOf[""]).map(r=>(r._2.toString))
+
+8.saveTextFile with compression techniques
+RDD.saveAsTextFile("<path/file>",classOf[GzipCodec/BZip2Codec])  ===B & Z are capital letters
+
+
+Reading different text file delimiters in spark:
+------------------------------------------------
+split(",")   --> coma delimiter
+split("\\*")   --> star delimiter
+split("\\|") --> pipe delimiter
+split('\"')  --> double quote delimiter
+split("\'")  --> single quote delimiter
+split("\t")  --> tab delimiter
+split(" ")  --> space delimiter
+split("\001")  --> hive default delimiter
+split('\\')  ->backsplash delimiter
+split("\0") --> NUll chanracter/fixedwidth file
+split("~") -->tild delimiter
+split(":") --> colon delimiter
+
+Note:If you get Array index Outbound Error, then it is not reading file as per specified delimiter.
+
+Removig the Null records
+------------------------
+filter(r=>(r.split(",")(1) != "")) --> Removing nulls records.
+filter(r=>(!r.split(",")(1).isEmpty)) --> Removing nulls records.
+
+want to remove the null/missing at last columns in a row , should use below method.
+filter(r=>(!r.substring(r.lastIndexOf(",")+1,r.length()).isEmpty))
+
+Joins:
+------
+rdd.join(rdd) -->Inner Join
+rdd.leftOuterJoin(rdd) -->left Join
+rdd.rightouterJoin(rdd) -->right Join
+
+
+5.groupByKey()
+--------------
+1.if the RDD is Iterable[string], then can apply flatMap(), if it is Iterable[numeric] , apply map()
+
+2.if the RDD is Iterable[int/Numeric] can apply aggregate functions after conversion of List but should use map.
+ex->if ord is RDD [order_date:string,order_item_price :Float]
+       ord.groupByKey().map(r=>(r._1,r._2.toList.size/max/min))
+
+Data frames:
+------------
+1.all columns can represent using col("<col_name>") in DF's.
+2.should use ===/!== for equating/not equating column values , can use in joins or filtering. use >,< for euality checks.
+ex-> filter(col("order_status") === "COMPLETED") or where(col("order_status") === "COMPLETED")
+     filter(col("order_status") !== "COMPLETED") or where(col("order_status") !== "COMPLETED")
+
+3.filter the empty strings
+ syntx-> filter("<col> !=''") or filter(col("col-nm") > value) 
+
+4.Removing for Nulls
+ syntx-> df.filter(col("<col_nm>").isNotNull/isNull)) 
+
+3.sortBy/orderBy to sorting the data.
+ex-> orderBy(desc(<col_nm>),asc(<col_nm>)) or sort(desc(<col>),asc(<col_nm>))
+
+*4.convert df to rdd and then textfile format.
+ex-> ord.rdd.map(r=>(r(0),r(1),r(2)))
+5.nested RDD's cannot convert to DF().
+
+6.filtering NULL values and missing values from DF().
+  filter("order_status !=''").filter(col("order_date").isNotNull && col("order_customer_id").isNotNull)
+
+7.below is the way to convert column data types in data frames.
+  org.apache.spark.sql.DataFrame:[order_date: bigint, order_id: int, order_status: string]
+  df.withColumn("order_date", df("order_date").cast("string")) //can change the bigint to string
+
+8.Changing the dataType of columns in selectExpr() API.
+  df.selectExpr("cast(order_date as string) order_dt", "cast(order_id as string)","order_status") 
+
+Note: Columns should in double quotes, as selectExper() expects string as input
+
+Joins:
+------
+df.join(df1, df("col") === df1("col")) -->inner Join
+df.join(df1, df("col") === df1("col"), "left_outer") -->Left Outer Join
+df.join(df1, df("col") === df1("col"), "right_outer") -->Right Outer Join
+
+
+Spark-sql
+---------
+1.can access hive tables through sqlContext.sql() but not able to do window and analytical functions,for that use hivecontext in spark
+2.use IN() operator during filter multiple values like 'COMPLETE', 'CLOSED'
+3.use braces when filtering using AND/OR combinations.
+4.can use HAVING CLAUSE in sql.
+5.can use "like" operator in sql
+**6.if we use any expressions in select clause , the same expression should mention in GROUP BY Clause
+  where as ORDER BY Clause expects alias names.
+
+**7.In DF's , expresions/derivations can done in SELECT/groupBy()/agg() clauses.
+   Should use col("") to repesent column in data Frames except ORDER BY clause.
+**8.during DF to RDD conversion first convert all columns from "any" type to String using toString, 
+    after that convert to your required format.
+  ex-> df.rdd.map(r=>(r(0).toString.toInt,r(1).toString.toFloat,r(2).toString))
+
+**9.filtering NULLs and Missing values
+   sqlContext.sql("select * from orders where order_status='' and order_date is not null").show()
+
+10.if the file can read through SQLContext, then can create temp table on it and can work with nulls/missing values.
+
+11.if we use OLAP functions/windowing functions inside of a subquery , 
+   should use distinct on outer query to avoid duplicates.
+sql-Functions
+-------------
+abs(-10) can give 10
+lpad('srting',10,'*')
+rpad('srting',10,'*')
+trim('<string>')/ltrim('<string>')/rtrim('<string>')
+coalesce(x,y)
+round(1234.452,2)
+lower()
+upper()
+substr()
+initcap()
+pmod(10,3)
+reverse('string')
+
+Hive
+----
+1.can use ORDER BY(), LIMIT in subqueries
+2.External avro files can created through avro schema.
+3.set hive.exec.dynamic.partition=true;
+  set hive.exec.dynamic.partition.mode=nonstrict;
+
+4.we can specify the fields-terminated-by '' option in CTAS.
+ex- create table <tbl-nm> row format delimited fields terminated by '|' lines terminated by '\n' stored as textfile
+    as select * from table1;
+
+5.INSERT OVERWRITE table <tbl-nm> select * from <tbl>
+6.INSERT OVEWRWRITE DIRECTORY "<path>" row format delimited fields terminated by '|' lines terminated by '\n'
+  stored as textfile select * form <tbl>
+
+
+INSERT INTO TABLE <tbl-nm> <select-clause>
+INSERT OVERWRITE TABLE <tbl-nm> <select-clause>
+
+7.when we use the CTAS statement or some loading statement, hive can first create .hive._xxx folder and move the data to it,
+  then it can move the data to original table.if it fails during the process, it can endup with ".hive_xxx" files
+
+
+Important Points about Every Tool:
+----------------------------------
+Traits: are similar to absract classes, can have abstract methods and can support multiple inheritance in scala.
+
+scala Collections:
+-----------------
+Mutable & Immutable Collections.
+can create two types.
+val s=Set(1,2,2,4,5) //create default Immutable set
+
+Import collection.mutable.set
+val s=Set(1,2,2,4,5) //create mutable set even though variable is VAL.
+
+**Note: this is applicable for all collections.
+
+>all collections in scala are case classes that can have companion objects.
+
+>in Traverse trait there is foreach method which implements the Iterator of Ietable trait.
+hierarchy is Traversable(trait)-->Iterable-->1)seq 2)set 3)map
+under seq -->i)IndexedSeq (ex-array,vector)
+            ii)LinearSeq (ex-list, linkedlist)
+under set -->i)SortedSet
+            ii)BitSet
+under Map -->i)SortedMap 
+
+sequence:
+---------
+>it is a sequence of numbers with the length.
+>Array and List are the sequences
+>Array is similar to normal Array can store same type of elements, accessed by prefix like(array(0),,etc) and fast at data retrival
+>List is like Linked List can store different type of elements,can easy to insert the elements in List but slower during data retrival.
+ Opertaions on List
+ ******************
+>two types of Lists are there 1)Mutable 2)immutable (default)
+>Import scala.collection.mutable._ to create the mutable collections & also mutable collections can create using VAR, Immutable using VAL.
+
+val l=List(1,2,3,4,5)
+val m=List(101,102,103,104,105)
+l :+ 6  //to add element to list at last
+6 :+ l  //to add element to list at first
+l ++ m  //to Combine two Lists as Single List
+l.size  //to get the count of element in the list
+l.foreach(printlnt) //this can conver the List to array & Mostly used to disply the elements
+l.toArray() //to convert the List to Array type collection.
+
+
+Set:
+****
+>can have the distinct values.so it doesn't has length. default is Immutable Set.
+
+>two types of sets are there 1)Mutable 2)immutable (default)
+>Import scala.collection.mutable._ to create the mutable collections & also mutable collections can create using VAR, Immutable using VAL.
+
+val os=Set(1,2,3,4,5) //immutable set
+val os1=collection.mutable.Set(101,102,103,104,105) //mutable set
+
+os ++ os1  //to Combine two Sets as Single List  
+
+*NOTE: with ++ operator can combine any mutable and immutable collections. ex immutable list and mutable set can combine uing "++"
+
+operations on Sets
+******************
+os.union(os1) / union os or os1/os | os1
+os.intersect(os1)/ os intersect os1 / os & os1
+os.diff(os1) / os diff os1 / os &~ os1
+
+above all are same and we can write in any methods.
+
+Map:
+****
+>can have (k,v) pairs where keys are unique.
+>can have mutable & immutable and default is immutable.
+
+val m=Map(1 -> "hello",2 -> "World")
+m(1) //gives hello
+m(2) //gives world
+m(3) //throws error since it is not available.
+we can also get values using get() Method, this can be useful to avoid exception in case if the value is null/not present by using "Option" type.
+
+m.get(3) //doesn't throw error.
+m.getOrElse(1,""not available")
+
+tuple:
+******
+>can store heterogenious elements
+>not part of collection
+>access using _1, _2 ,.. etc.
+>can be used to create and work with complex collection types like [List(values),Set(values)].
+
+difference between flume and kafka
+----------------------------------
+flume-can push data to sink, if agent fail no replicas to recovery
+kafka-can pull data from it and can distribute the replicas to the nodes, easy support to multiple targets.
+
+
+Flume-1.6.0
+spark-1.6.2
+scala-2.10.11
+sbt-0.13.15
+hadoop-2.6.0
+sqoop-1.4.6
+hive-1.2.1000
+cassandra-2.1
+
+
+Hive & Impala:
+*************
+1.Hive is developed for warehouse & batch processing where as Impala is for adhoc/interactive query engine to bypass the MR.
+2.hive can allow only one user to access the metadata at a time but impala allows for multuser.
+3.Impala doesn't support UPDATE/DELETE operations.
+4.Impala important Architecture components
+i) meta store
+ii) impala deamon(Impalad) --- query planner,co-ordinator ,query excutor
+iii) Impala statestore.
+5.uses the same metastore of hive, Hbase.
+
+Cassandra:
+**********
+Distributed transactional database designed for big data and high availability
+-->Millions transactions per second
+-->1000-node cluster scalability
+-->Millisecond response time and linear scalability
+-->Extremely high availability and partition tolerance
+-->Seamless multi data center support
+
+>Cassandra provides three classes (LZ4Compressor, SnappyCompressor, and DeflateCompressor ) for Compression.
+>The default is SnappyCompressor
+
+-->Apache Kafka is a distributed publish-subscribe messaging system 
+
+
+Spark-RDD & Partitions:
+-----------------------
+1.spark can create at least partitions as total number of cores in the cluster.
+eg-if cluster have 50 cores, spark can able to create 50 partitions atleast
+2.Spark Jobs can be divided as stages,taks.separate task is assigned to each partition.
+3.for each data block (128MB), it can create each partition or we may need to define by the time of creating the RDD.
+eg- sc.parallelize(data,partitions)
+    sc.textfile(file,partitions)
+    sc.defaultParallelism --can give you the as many as the number of executors for parallelism
+also depends on number of output files needs to create, it will create one file for one partition.
+
+4.Number of partitions = Number of tasks
+  general recommendation: Number of partitions >= Default Parallelism
+
+5.to find the number of partitins for RDD
+  RDD.partitions.size
+
+coalesce(numpartitions) -->can reduce the partitions by mergring the existing partiitons, doesn't use shuffling
+repartition(numPartititons) -->can increase/decrease the partitions, uses shuffling.
+partitionBy(partitioner) -->can create a new RDD by shuffling the existing elements using specified partitioner & numPartitons
+
+6.reduceByKey(…?), foldByKey(…?), combineByKey(…?), groupByKey(),Join(),leftOuterJoin(),rightOuterJoin(),cogroup() 
+  transformation isuses the "HashPartitioner"
+7.sortByKey(…?) uses the "RangePartitioner"
+
+Shuffling: Data shuffling is the process of reorganizing and transferring data from existing partitions into new partitions
+
+
+Spark execution Modes:
+----------------------
+1.local:define during creation of conf object, Master and worker nodes runs in the same machine.useful for development/explore.
+         val conf=new SarkConf().setAppName().setmaster("local[]/local[2]/local[*]")
+         local[*] -tells the all cores.
+         local[2] -tells to use 2 cores
+         local[] -default cores.
+2.Standalone:define during creation of conf object, Master and worker nodes runs in the different machines.
+              useful for development/fix prod isses in code.
+          val conf=new SarkConf().setAppName().setmaster("host").set("spark.core.max","2")
+NOTE:Can be used only if the cluster doesn't have spark, need to install spark on all worker nodes and start the 
+     start-master.sh script manully. it can start with Master Web UI <ipaddress>
+     Run start-slaves.sh <master WebUI> , you can see all the worker nodes connected to master and ready to execute.
+
+3.YARN:define while spark-submit master yarn.In this no need to install spark on all worker nodes, since it runs on top of
+       YARN. Two modes are there.
+       YARN-Client: can run the driver program in master machine/in gateway.
+       YARN-CLuster :can run the driver program in one of the worker machine.
+NOTE: can run any kind of jobs in YARN like MR, hive,spark,,etc.
+4.Memos: Specially design for Spark-production  run. No need to set the parameter to run job efficiently. it can defined 
+        internally and takes care. cann't run any application other than spark.
+
+
+
+HIVE-Joins:-
+----------
+->In Hive Explain plan, SIMPLE_EDGE means Shuffle Join, BROADCAST_EDGE means Map-Join. 
+
+->To run Join as MAP-JOIN one of the table should be fit enough to RAM and Small table can be anyside in case of INNER JOIN.
+ 
+
+->In case of LEFT-OUTER-JOIN, small table should be on right side. vice-versa can pick the shuffle/Merge Join.
+->In case of RIGHT-OUTER-JOIN, small table should be on left side. vice-versa can pick the shuffle/Merge Join.
+->In case of FULL-OUTER-JOIN, There is no way to go with Map-Join, Full Join is always shuffle Join.
+
+When Join Two Small Tables:-
+--------------------------
+->INNER/LEFT/RIGHT OUTER Joins can do Broadcast JOIN (Map-Join)
+->if we do FULL OUTER JOIN , hive can do shuffle join even if both tables are small, because the thumb rule is only one
+  table can take a streaming table.
+
+If CBO was not enabled below things can happen:-
+----------------------------------------------
+NOTE->give all the where condition as Join Coniditions in hive. if we give filters at WHERE clause, it will Join first and 
+     filters the data.
+NOTE->Most of the times Optimizer choose MapJoin default, if not specify explicitly like below.
+
+     SELECT /*+ MAPJOIN(b) */ from a
+     LEFT OUTER JOIN b on a.id=b.id
+
+
+Scala Exceptions:
+*****************
+move the code which we suspect that can fail to try{} block, each try() can have catch{} block.
+try{
+val rdd=filerdd.map(r=>(r.,split(",")(4))).take(10)
+}
+catch{
+case e:java.lang.ArrayIndexOutOfBoundException => println("IndexHasExceeded")
+case _:Throwable => println("Something Went wrong") //use this for default exceptions or
+case unknown => println("unexpected error")
+}
+
+Hive table Structral Changes:
+---------------------------------
+1.Hive Tables can add/replace/change datatype or change order of columns in table Using ALter table statement but can't delete.
+2.All tables doesn't allolw to drop a columns but replace columns can support only native serdes like text files.
+3.Replace columns doesn't work for ORC tables.
+4.Replace columns can remove all the existing cols and add onlt cols mentioned as replace cols.
+5.Using alter-->Change can change order of columns and support only two keywords. i.e, FIRST & AFTER
+
+create table emp(id int, name string, city int) stored as orc;
+Alter table emp add columns (sal double); //add sal to table
+alter table emp change city city string; //cahnge data type of city col
+alter table emp change city city string after a; //cahnge data type of city col & changng order of col.
+alter table emp change city city string first; //place the cols as first in table stucture.
+
+alter table emp replace column( empid int); //failed since it support only naticve serde.
+
+alter tbale emp rename to employe; //can rename table name
+ 
+How Tez could be faster than MR:
+-------------------------------
+Tez is a DAG (Directed acyclic graph) architecture. A typical Map reduce job has following steps:
+1. Read data from file -->one disk access
+2. Run mappers
+3. Write map output --> second disk access
+4. Run shuffle and sort --> read map output, third disk access
+5. write shuffle and sort --> write sorted data for reducers --> fourth disk access
+6. Run reducers which reads sorted data --> fifth disk output
+7. Write reducers output -->sixth disk access
+
+Tez works very similar to Spark (Tez was created by Hortonworks well before Spark):
+1. Execute the plan but no need to read data from disk.
+2. Once ready to do some calculations (similar to actions in spark), get the data from disk and perform all steps and produce output.
+Only one read and one write.
+
+Notice the efficiency introduced by not going to disk multiple times. Intermediate results are stored in memory 
+(not written to disks). On top of that there is vectorization (process batch of rows instead of one row at a time). 
+All this adds to efficiencies in query time.
+
+How CheckPointing Happens in Hadoop Cluster/CheckPointing Node:-
+----------------------------------------------------------------
+->Check Pointing happen in Hadoop Version1 with the help of checkpointing node or secondary namenode.
+->Secondary NN can get the edit logs from NN on regualr intervals, It can merge those Edit Logs with FSIMAGE and
+  send back to NN.
+->But If NN fails, SNN doesn't replace with NN position.
+->SNN is just to merge the Edit + FSImages since NN can merge Edit-logs with FsImage only if it restarted and it is not good
+  to restart the NN and doesn't maintain the huge Editlogs.
+NameNode in Hadoop V2 (NameNode HA)
+----------------------------------
+->HDP-V2 allow to create two/more similar NameNodes for HighAvailability Reason where one NN can be Active & one will be passive.
+->If NN1 fails, NN2 can replace it to achieve HA. this can implement two ways
+  1) QJM(Quoram-Journal-Manager)-
+   ----------------------------
+     i.Active NN & StandBy NN are communicate with a group of separate daemons called “JournalNodes” (JNs).
+    ii.When any namespace modification is performed by the Active node, it durably logs a record of the modification to a 
+       majority of these JNs. The Standby node is reads these edits from the JNs and apply to its own name space.
+   iii.When any namespace modification is performed by the Active node, it durably logs a record of the modification to a majority 
+       of these JNs. The Standby node is reads these edits from the JNs and apply to its own name space. 
+
+  2)NFS Shared Storage
+    ------------------
+    both Active NameNode and StandBy NameNode have the access to the a particular directory on shared storage 
+    (i.e Network File System). In case of any updated done by NameNode it logs the event to the shared directory. 
+    On the other side StandBy NameNode is looking for the updated on the same shared directory and updates the edit logs 
+    simultaneously.
+
+
+Resource Manager HA:-
+--------------------
+->ResourceManager (RM) is responsible for tracking the resources in a cluster, and scheduling applications.
+->The High Availability feature adds redundancy in the form of an Active/Standby ResourceManager pair to remove this otherwise
+  single point of failure.
+->Fail-over can be done by Atomatic or Manual.
+
+  1.Automatic failover:-
+    The RMs have an option to embed the Zookeeper-based ActiveStandbyElector to decide which RM should be the Active. 
+    When the Active goes down or becomes unresponsive, another RM is automatically elected to be the Active which then 
+    takes over.
+  2.Manual failover:-
+    ->When automatic failover is not enabled, admins have to manually transition one of the RMs to Active
+    ->To failover from one RM to the other, they are expected to first transition the Active-RM to Standby and transition 
+      a Standby-RM to Active.
+    ->All this can be done using the “yarn rmadmin” CLI.
+
+NOTE:Any RM state can recover if it goes down using statestore info.there are two RMStateStore implementations for persistence
+     FileSystemRMStateStore and ZKRMStateStore.(Recommand for HA)
+     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
