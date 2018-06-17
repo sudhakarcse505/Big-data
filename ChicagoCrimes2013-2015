@@ -18,6 +18,7 @@ val res=crimes_ds.map(r=>(r.split(",")(5),r.split(",")(2)))
                  .reduceByKey(_ + _)
                  .sortByKey(false)
                  .map(r=>(r._1._1,r._1._2+":"+r._2))
+res.take(100).foreach(println)
 
 //save the result to file
 res.saveAsSequenceFile("datasets/Crime-Count-by-Type")
@@ -29,7 +30,7 @@ val res2=crimes_ds.map(r=>(r.split(",")(5).trim))
 //save the data as TextFile Using GZip Compression
 res2.saveAsTextFile("register-Crimes",classOf[GZipCodec])
 
-//Get Monthly Crime Count by Type using DataFrames
+//Get Monthly Crime Count by Type
 val res3=crimes_ds.map(r=>(r.split(",")(5),r.split(",")(2)))
                   .map(r=>(r._1,r._2.split(" ")(0)))
                   .map(r=>(r._2.split("/")(2),r._2.split("/")(0),r._1))
@@ -77,7 +78,8 @@ val res6=crimes_ds.map(r=>(r.split(",")(7).trim))
                   .reduceByKey(_ + _)
                   .sortBy(k=>k._2,false)
                   .map(r=>r._1 + ":" + r._2)
-
+  res6.take(100).foreach(println)
+  
 //Which Community Area Had most Incidents?
 val res7=crimes_ds.filter(r=>(r.split(",")(13).trim.length > 0))
                   .filter(r=>(r.split(",")(13).trim != "false"))
@@ -86,6 +88,7 @@ val res7=crimes_ds.filter(r=>(r.split(",")(13).trim.length > 0))
                   .reduceByKey(_ + _)
                   .sortBy(k=>k._2,false)
                   .map(r=>(r._1.toInt,r._2.toInt))
+res7.take(100).foreach(println)
 
 //Load the Community Area File and Remove the Header
 val Comunity_Header=sc.textFile("datasets/Crimes_ComAreas.csv").first 
@@ -109,7 +112,7 @@ val res8=crimes_ds.filter(r=>(r.split(",")(11).trim.length > 0 && r.split(",")(1
                   .map(r=>(r.split(",")(11).toInt))
                   .map(r=>(r,1))
                   .reduceByKey(_ + _)
-                  .sortBy(k=>k._2,false)
+                  .sortBy(k=>k._2,false)  //sortBy is an Action
                   .map(r=>(r._1.toInt,r._2.toInt))
 
 //Save the Result to a TextFile
