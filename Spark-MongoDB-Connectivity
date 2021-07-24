@@ -1,0 +1,29 @@
+Spark -MongoDB Connectivity POC
+--------------------------------------------------------------------------
+spark-shell --packages org.mongodb.spark:mongo-spark-connector_2.11:2.4.2
+import com.mongodb.spark.config.{ReadConfig, WriteConfig}
+import com.mongodb.spark.sql._
+import com.mongodb.spark.MongoSpark
+import org.apache.spark.sql.{DataFrame, SparkSession}
+
+MongoDB URI= "mongodb://<UserName>:<Password>@xx.xx.xx.xx:27017/DB.Collection?authSource=Admin"
+
+val MongoDF=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://root:abc123@xx.xx.xx.xx:27017","database" ->"xxx","collection" -> "xxx")))
+
+
+
+val MongoDF1=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://mng:abc123@127.0.0.1:27017/DB.EmployeeReport?authSource=admin")))
+val MongoDF2=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://mng:abc123@127.0.0.1:27017/DB?authSource=admin","collection"->"EmployeeReport")))
+
+val MongoDBDF=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://root:AMPPassw0rd1@127.0.0.1:27018/AMP?authSource=admin","collection"->"XXX")))
+val MongoDBDF1=MongoDBDF.filter("TimeEntry_ID == 7793151")
+
+
+val MongoDBTargetURI = "mongodb://root:AMPPassword@-127.0.0.1:27018/AMP?authSource=admin"
+val writeConfig = WriteConfig(Map("uri" -> s"$dataSource","collection" -> "XXX"))
+MongoSpark.save(MongoDBDF1, writeConfig)
+
+
+val dataSource = "mongodb://mng:abc123@xx.xx.xx.xx:27017/DBA.XXXX?authSource=admin"  //This Way also can work
+val writeConfig = WriteConfig(Map("uri" -> s"$dataSource","replaceDocument" -> "false"))
+MongoSpark.save(MongoDBDF1, writeConfig)
