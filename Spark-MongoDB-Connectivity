@@ -8,22 +8,22 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 
 MongoDB URI= "mongodb://<UserName>:<Password>@xx.xx.xx.xx:27017/DB.Collection?authSource=Admin"
 
-val MongoDF=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://root:abc123@xx.xx.xx.xx:27017","database" ->"xxx","collection" -> "xxx")))
+val MongoDF=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://xxx:xxx@xx.xx.xx.xx:27017","database" ->"xxx","collection" -> "xxx")))
 
 
 
-val MongoDF1=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://mng:abc123@127.0.0.1:27017/DB.EmployeeReport?authSource=admin")))
-val MongoDF2=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://mng:abc123@127.0.0.1:27017/DB?authSource=admin","collection"->"EmployeeReport")))
+val MongoDF1=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://xxx:xxx@127.0.0.1:27017/DB.EmployeeReport?authSource=admin")))
+val MongoDF2=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://xxx:xxx@127.0.0.1:27017/DB?authSource=admin","collection"->"EmployeeReport")))
 
-val MongoDBDF=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://root:AMPPassw0rd1@127.0.0.1:27018/AMP?authSource=admin","collection"->"XXX")))
-val MongoDBDF1=MongoDBDF.filter("TimeEntry_ID == 7793151")
+val MongoDBDF=spark.read.mongo(ReadConfig(Map("uri" -> "mongodb://xxx:xxxx@127.0.0.1:27018/AMP?authSource=admin","collection"->"XXX")))
+val MongoDBDF1=MongoDBDF.filter("TimeEntry == 7793151")
 
 
-val MongoDBTargetURI = "mongodb://root:AMPPassword@-127.0.0.1:27018/AMP?authSource=admin"
+val MongoDBTargetURI = "mongodb://xxx:xxx@-127.0.0.1:27018/AMP?authSource=admin"
 val writeConfig = WriteConfig(Map("uri" -> s"$dataSource","collection" -> "XXX"))
 MongoSpark.save(MongoDBDF1, writeConfig)
 
 
-val dataSource = "mongodb://mng:abc123@xx.xx.xx.xx:27017/DBA.XXXX?authSource=admin"  //This Way also can work
+val dataSource = "mongodb://xxx:xxx@xx.xx.xx.xx:27017/DBA.XXXX?authSource=admin"  //This Way also can work
 val writeConfig = WriteConfig(Map("uri" -> s"$dataSource","replaceDocument" -> "false"))
 MongoSpark.save(MongoDBDF1, writeConfig)
